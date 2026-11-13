@@ -123,7 +123,13 @@ public class SyncEngine {
                         fireActionDone(ACTION_DELETE_REMOTE, t.getPath());
                         changed++;
                     } catch (Exception e) {
-                        fireError(t.getPath(), e);
+                        // 对端文件已不存在（404）说明删除目标已达成，不算失败
+                        if (String.valueOf(e.getMessage()).contains("404")) {
+                            fireActionDone(ACTION_DELETE_REMOTE, t.getPath());
+                            changed++;
+                        } else {
+                            fireError(t.getPath(), e);
+                        }
                     }
                 }
             }

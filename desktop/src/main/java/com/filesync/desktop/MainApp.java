@@ -233,10 +233,10 @@ public class MainApp extends Application {
 
                 @Override
                 public void onDeviceLost(DeviceInfo device) {
-                    Platform.runLater(() -> {
+                    Platform.runLater(() -> refreshKeepsSelection(() -> {
                         peerList.removeIf(d -> d.getDeviceId().equals(device.getDeviceId()));
                         log("设备离线: " + device.getDeviceName());
-                    });
+                    }));
                 }
             });
             discovery.start();
@@ -433,8 +433,28 @@ public class MainApp extends Application {
     }
 
     private void upsertPeer(DeviceInfo device) {
-        peerList.removeIf(d -> d.getDeviceId().equals(device.getDeviceId()));
-        peerList.add(device);
+        // 定时发现会不断刷新列表，按设备 ID 恢复选中，避免用户刚点好的设备又被清空
+        refreshKeepsSelection(() -> {
+            peerList.removeIf(d -> d.getDeviceId().equals(device.getDeviceId()));
+            peerList.add(device);
+        });
+    }
+
+    /** 执行列表变更，并在结束后按设备 ID 还原选中项 */
+    private void refreshKeepsSelection(Runnable mutation) {
+        DeviceInfo selected = deviceListView == null ? null
+                : deviceListView.getSelectionModel().getSelectedItem();
+        String selectedId = selected == null ? null : selected.getDeviceId();
+        mutation.run();
+        if (selectedId == null || deviceListView == null) {
+            return;
+        }
+        for (DeviceInfo d : peerList) {
+            if (selectedId.equals(d.getDeviceId())) {
+                deviceListView.getSelectionModel().select(d);
+                return;
+            }
+        }
     }
 
     private void log(String message) {
