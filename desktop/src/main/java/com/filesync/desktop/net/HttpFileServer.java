@@ -36,6 +36,7 @@ public class HttpFileServer {
 
     private volatile File syncRoot;
     private volatile TombstoneStore tombstoneStore;
+    private volatile java.util.function.Consumer<String> logListener;
     private HttpServer server;
 
     public HttpFileServer(DeviceInfo self, File syncRoot, TombstoneStore tombstoneStore) {
@@ -52,12 +53,18 @@ public class HttpFileServer {
         this.tombstoneStore = tombstoneStore;
     }
 
+    /** 接收对端推送来的同步日志（对端正在同步时，本机同样实时显示） */
+    public void setLogListener(java.util.function.Consumer<String> listener) {
+        this.logListener = listener;
+    }
+
     public void start() throws IOException {
         server = HttpServer.create(new InetSocketAddress(self.getHttpPort()), 0);
         server.createContext(ApiPaths.INFO, this::handleInfo);
         server.createContext(ApiPaths.MANIFEST, this::handleManifest);
         server.createContext(ApiPaths.FILE, this::handleFile);
         server.createContext(ApiPaths.PING, this::handlePing);
+        server.createContext(ApiPaths.LOG, this::handlePeerLog);
         server.setExecutor(Executors.newFixedThreadPool(8));
         server.start();
     }
@@ -74,6 +81,31 @@ public class HttpFileServer {
 
     private void handlePing(HttpExchange ex) throws IOException {
         writeJson(ex, 200, Map.of("status", "ok"));
+    }
+
+    /** 接收对端推送的日志行并交给界面显示 */
+    private void handlePeerLog(HttpExchange ex) throws IOException {
+        if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) {
+            writeError(ex, 405, "日志通道仅支持 POST");
+            return;
+        }
+        try {
+            String body = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            com.filesync.common.model.PeerLogMessage msg =
+                    JsonCodec.fromJson(body, com.filesync.common.model.PeerLogMessage.class);
+            if (msg == null || msg.getText() == null) {
+                writeError(ex, 400, "日志内容为空");
+                return;
+            }
+            java.util.function.Consumer<String> listener = logListener;
+            if (listener != null) {
+                String from = msg.getFrom() == null ? "对端" : msg.getFrom();
+                listener.accept("[来自 " + from + "] " + msg.getText());
+            }
+            writeJson(ex, 200, Map.of("status", "ok"));
+        } catch (Exception e) {
+            writeError(ex, 500, "日志接收失败: " + e.getMessage());
+        }
     }
 
     private void handleInfo(HttpExchange ex) throws IOException {

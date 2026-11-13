@@ -31,6 +31,7 @@ public class AndroidHttpServer extends NanoHTTPD {
     private final DeviceInfo self;
     private final TombstoneStore tombstoneStore;
     private volatile File syncRoot;
+    private volatile java.util.function.BiConsumer<String, String> logListener;
 
     public AndroidHttpServer(int port, DeviceInfo self, File syncRoot,
                              TombstoneStore tombstoneStore) {
@@ -44,6 +45,11 @@ public class AndroidHttpServer extends NanoHTTPD {
 
     public void setSyncRoot(File syncRoot) {
         this.syncRoot = syncRoot;
+    }
+
+    /** 接收对端推送的同步日志（对端正在同步时，本机同样实时显示） */
+    public void setLogListener(java.util.function.BiConsumer<String, String> listener) {
+        this.logListener = listener;
     }
 
     @Override
@@ -65,6 +71,9 @@ public class AndroidHttpServer extends NanoHTTPD {
             if (ApiPaths.FILE.equals(uri)) {
                 return serveFile(session, method, params);
             }
+            if (ApiPaths.LOG.equals(uri)) {
+                return serveLog(session, method);
+            }
             return json(Response.Status.NOT_FOUND, mapOf("error", "未知路径"));
         } catch (Exception e) {
             return json(Response.Status.INTERNAL_ERROR,
@@ -81,6 +90,39 @@ public class AndroidHttpServer extends NanoHTTPD {
         manifest.setTombstones(tombstoneStore == null
                 ? java.util.Collections.emptyList() : tombstoneStore.all());
         return json(Response.Status.OK, manifest);
+    }
+
+    /**
+     * 接收对端推送的日志行。NanoHTTPD 的 postData 在 POST 时会被解析到 files 映射里，
+     * 这里取出来交给上层（SyncManager → 界面日志区）。
+     */
+    private Response serveLog(IHTTPSession session, Method method) {
+        if (method != Method.POST) {
+            return json(Response.Status.METHOD_NOT_ALLOWED, mapOf("error", "日志通道仅支持 POST"));
+        }
+        try {
+            Map<String, String> files = new HashMap<>();
+            session.parseBody(files);
+            String body = files.get("postData");
+            if (body == null || body.isEmpty()) {
+                return json(Response.Status.BAD_REQUEST, mapOf("error", "日志内容为空"));
+            }
+            com.filesync.common.model.PeerLogMessage msg =
+                    JsonCodec.fromJson(body, com.filesync.common.model.PeerLogMessage.class);
+            if (msg == null || msg.getText() == null) {
+                return json(Response.Status.BAD_REQUEST, mapOf("error", "日志内容为空"));
+            }
+            String from = msg.getFrom() == null ? "对端" : msg.getFrom();
+            android.util.Log.i("FileSync", "peerlog " + from + ": " + msg.getText());
+            java.util.function.BiConsumer<String, String> listener = logListener;
+            if (listener != null) {
+                listener.accept(from, msg.getText());
+            }
+            return json(Response.Status.OK, mapOf("status", "ok"));
+        } catch (Exception e) {
+            return json(Response.Status.INTERNAL_ERROR, mapOf("error",
+                    "日志接收失败: " + (e.getMessage() == null ? "未知错误" : e.getMessage())));
+        }
     }
 
     private Response serveFile(IHTTPSession session, Method method, Map<String, String> params)

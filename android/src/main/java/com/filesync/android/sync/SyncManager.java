@@ -332,6 +332,16 @@ public class SyncManager {
         return discovery == null ? java.util.Collections.emptyList() : discovery.getDevices();
     }
 
+    /** 手动刷新设备列表：立即再广播一次发现报文，让在线电脑马上回应 */
+    public void refreshPeers() {
+        if (discovery == null || !discovery.isRunning()) {
+            postLog("设备发现未运行，无法刷新");
+            return;
+        }
+        discovery.requestAnnounce();
+        postLog("已刷新设备列表（当前在线 " + getPeers().size() + " 台）");
+    }
+
     public File getSyncRoot() {
         return syncRoot;
     }
@@ -355,6 +365,8 @@ public class SyncManager {
             try {
                 AndroidHttpServer srv = new AndroidHttpServer(port, self, syncRoot,
                         engine.tombstoneStore());
+                // 对端同步时把日志推过来，这里转成界面日志行
+                srv.setLogListener((from, text) -> postLog("[来自 " + from + "] " + text));
                 srv.start();
                 this.httpServer = srv;
                 self.setHttpPort(port);

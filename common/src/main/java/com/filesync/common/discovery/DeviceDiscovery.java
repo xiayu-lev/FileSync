@@ -86,6 +86,25 @@ public class DeviceDiscovery {
         return running;
     }
 
+    /**
+     * 手动刷新：立刻再广播一次 ANNOUNCE，让在线对端马上回应并回填列表，
+     * 不必等下一个周期（默认周期较长，用户点「刷新」时希望立刻看到结果）。
+     */
+    public void requestAnnounce() {
+        if (!running) {
+            return;
+        }
+        Thread t = new Thread(() -> {
+            try {
+                sendBroadcast(DiscoveryConstants.MSG_ANNOUNCE);
+            } catch (IOException e) {
+                System.err.println("[discovery] 刷新广播失败: " + e.getMessage());
+            }
+        }, "fs-discovery-refresh");
+        t.setDaemon(true);
+        t.start();
+    }
+
     /** 返回当前在线设备快照 */
     public List<DeviceInfo> getDevices() {
         List<DeviceInfo> result = new ArrayList<>();

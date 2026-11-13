@@ -29,5 +29,8 @@ public interface RemotePeerClient {
     /** 通知对端删除文件或目录，并由对端自行记录墓碑 */
     void deleteFile(String relPath) throws IOException;
 
+    /** 把一条同步日志推送给对端，对端在自己的日志区显示 */
+    void sendLog(String senderName, String text) throws IOException;
+
     void close();
 }

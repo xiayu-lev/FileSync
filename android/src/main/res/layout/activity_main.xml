@@ -41,13 +41,33 @@
         android:textColor="#5c6b7a"
         android:textSize="12sp" />
 
-    <TextView
-        android:layout_width="wrap_content"
+    <LinearLayout
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
-        android:text="局域网在线设备（需连接同一 WiFi）"
-        android:textStyle="bold"
-        android:textColor="#1f2d3d" />
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="局域网在线设备（需连接同一 WiFi）"
+            android:textColor="#1f2d3d"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/btn_refresh"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:minWidth="0dp"
+            android:paddingLeft="14dp"
+            android:paddingRight="14dp"
+            android:backgroundTint="#E8F1F0"
+            android:text="刷新"
+            android:textColor="#0F7F75"
+            android:textSize="13sp" />
+    </LinearLayout>
 
     <ListView
         android:id="@+id/lv_peers"
@@ -56,7 +76,21 @@
         android:layout_weight="2"
         android:layout_marginTop="6dp"
         android:background="#f5f7fa"
+        android:choiceMode="singleChoice"
+        android:listSelector="#CCE7E4"
         android:minHeight="160dp" />
+
+    <TextView
+        android:id="@+id/tv_selected"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:background="#EAF6F4"
+        android:padding="6dp"
+        android:text="当前选中：未选择"
+        android:textColor="#0c6b63"
+        android:textSize="12sp"
+        android:textStyle="bold" />
 
     <Button
         android:id="@+id/btn_sync"

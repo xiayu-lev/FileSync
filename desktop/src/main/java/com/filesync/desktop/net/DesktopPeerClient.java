@@ -165,6 +165,17 @@ public class DesktopPeerClient implements RemotePeerClient {
     }
 
     @Override
+    public void sendLog(String senderName, String text) throws IOException {
+        String body = JsonCodec.toJson(new com.filesync.common.model.PeerLogMessage(senderName, text));
+        HttpRequest req = HttpRequest.newBuilder(URI.create(baseUrl + ApiPaths.LOG))
+                .timeout(Duration.ofSeconds(5))
+                .header("Content-Type", "application/json; charset=utf-8")
+                .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
+                .build();
+        sendEmpty(req);
+    }
+
+    @Override
     public void close() {
         // JDK HttpClient 无需显式关闭
     }

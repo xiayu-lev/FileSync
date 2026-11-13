@@ -45,15 +45,20 @@ public class MainActivity extends AppCompatActivity implements SyncManager.State
     private TextView tvDir;
     private TextView tvLog;
     private TextView tvProgress;
+    private TextView tvSelected;
     private ListView lvPeers;
     private Button btnSync;
     private Button btnDir;
+    private Button btnRefresh;
     private ProgressBar progressBar;
     private ScrollView logScroll;
 
     private SyncManager manager;
     private PeerAdapter peerAdapter;
     private final List<DeviceInfo> peers = new ArrayList<>();
+
+    /** 记住用户选中的设备 ID：列表刷新（设备上下线）后仍保持同一台被选中 */
+    private String selectedDeviceId;
 
     /** 授权完成后自动继续打开目录选择器 */
     private boolean pickDirAfterPermission;
@@ -66,9 +71,11 @@ public class MainActivity extends AppCompatActivity implements SyncManager.State
         tvDir = findViewById(R.id.tv_dir);
         tvLog = findViewById(R.id.tv_log);
         tvProgress = findViewById(R.id.tv_progress);
+        tvSelected = findViewById(R.id.tv_selected);
         lvPeers = findViewById(R.id.lv_peers);
         btnSync = findViewById(R.id.btn_sync);
         btnDir = findViewById(R.id.btn_dir);
+        btnRefresh = findViewById(R.id.btn_refresh);
         progressBar = findViewById(R.id.progress);
         logScroll = findViewById(R.id.log_scroll);
 
@@ -78,6 +85,17 @@ public class MainActivity extends AppCompatActivity implements SyncManager.State
 
         btnSync.setOnClickListener(v -> onSyncClicked());
         btnDir.setOnClickListener(v -> onDirClicked());
+        btnRefresh.setOnClickListener(v -> {
+            if (manager != null) {
+                manager.refreshPeers();
+            }
+        });
+        lvPeers.setOnItemClickListener((parent, view, position, id) -> {
+            if (position >= 0 && position < peers.size()) {
+                selectedDeviceId = peers.get(position).getDeviceId();
+                updateSelectedLabel();
+            }
+        });
 
         requestNotificationPermissionIfNeeded();
         bootstrap();
@@ -96,6 +114,7 @@ public class MainActivity extends AppCompatActivity implements SyncManager.State
                         peers.clear();
                         peers.addAll(manager.getPeers());
                         peerAdapter.notifyDataSetChanged();
+                        restoreSelection();
                     });
                     return;
                 }
@@ -123,12 +142,58 @@ public class MainActivity extends AppCompatActivity implements SyncManager.State
             appendLog("服务尚未就绪");
             return;
         }
-        int pos = lvPeers.getCheckedItemPosition();
-        if (pos < 0 || pos >= peers.size()) {
+        DeviceInfo target = findSelectedPeer();
+        if (target == null) {
             appendLog("请先在列表中点击选择一台设备");
             return;
         }
-        manager.syncWith(peers.get(pos));
+        manager.syncWith(target);
+    }
+
+    /** 按记住的设备 ID 找到当前选中的设备；设备已离线则返回 null */
+    private DeviceInfo findSelectedPeer() {
+        if (selectedDeviceId != null) {
+            for (DeviceInfo d : peers) {
+                if (selectedDeviceId.equals(d.getDeviceId())) {
+                    return d;
+                }
+            }
+        }
+        int pos = lvPeers.getCheckedItemPosition();
+        if (pos >= 0 && pos < peers.size()) {
+            return peers.get(pos);
+        }
+        return null;
+    }
+
+    private void updateSelectedLabel() {
+        if (tvSelected == null) {
+            return;
+        }
+        DeviceInfo d = findSelectedPeer();
+        if (d == null) {
+            tvSelected.setText("当前选中：未选择（点击列表中的设备）");
+            return;
+        }
+        String tag = DeviceInfo.TYPE_ANDROID.equals(d.getDeviceType()) ? "[手机] " : "[电脑] ";
+        tvSelected.setText("当前选中：" + tag + d.getDeviceName()
+                + "\n" + d.getIp() + ":" + d.getHttpPort());
+    }
+
+    /** 列表刷新后按设备 ID 恢复选中状态 */
+    private void restoreSelection() {
+        lvPeers.clearChoices();
+        if (selectedDeviceId == null) {
+            updateSelectedLabel();
+            return;
+        }
+        for (int i = 0; i < peers.size(); i++) {
+            if (selectedDeviceId.equals(peers.get(i).getDeviceId())) {
+                lvPeers.setItemChecked(i, true);
+                break;
+            }
+        }
+        updateSelectedLabel();
     }
 
     // ==================== 同步目录切换 ====================
@@ -268,6 +333,7 @@ public class MainActivity extends AppCompatActivity implements SyncManager.State
                     peers.clear();
                     peers.addAll(manager.getPeers());
                     peerAdapter.notifyDataSetChanged();
+                    restoreSelection();
                     Toast.makeText(this, "同步目录已切换", Toast.LENGTH_SHORT).show();
                 });
             } catch (Exception e) {
@@ -287,6 +353,8 @@ public class MainActivity extends AppCompatActivity implements SyncManager.State
         peers.clear();
         peers.addAll(updated);
         peerAdapter.notifyDataSetChanged();
+        // 设备上下线导致列表重建时，保持原来选中的设备（按设备 ID 还原）
+        restoreSelection();
     }
 
     @Override

@@ -150,6 +150,18 @@ public class AndroidPeerClient implements RemotePeerClient {
     }
 
     @Override
+    public void sendLog(String senderName, String text) throws IOException {
+        String body = JsonCodec.toJson(
+                new com.filesync.common.model.PeerLogMessage(senderName, text));
+        Request request = new Request.Builder()
+                .url(baseUrl + ApiPaths.LOG)
+                .post(RequestBody.create(body,
+                        MediaType.parse("application/json; charset=utf-8")))
+                .build();
+        executeEmpty(request);
+    }
+
+    @Override
     public void close() {
         // OkHttpClient 由上层统一管理，这里不释放连接池
     }

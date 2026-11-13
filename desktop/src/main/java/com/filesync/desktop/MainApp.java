@@ -57,6 +57,7 @@ public class MainApp extends Application {
     });
 
     private ListView<DeviceInfo> deviceListView;
+    private Label selectedLabel;
     private TextField dirField;
     private Button chooseDirBtn;
     private Button syncBtn;
@@ -134,6 +135,14 @@ public class MainApp extends Application {
         Label title = new Label("局域网在线设备");
         title.getStyleClass().add("panel-title");
 
+        Button refreshBtn = new Button("刷新");
+        refreshBtn.setOnAction(e -> refreshDevices());
+
+        javafx.scene.layout.Region spacer = new javafx.scene.layout.Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+        HBox header = new HBox(8, title, spacer, refreshBtn);
+        header.setAlignment(Pos.CENTER_LEFT);
+
         deviceListView = new ListView<>(peerList);
         deviceListView.setCellFactory(lv -> new ListCell<>() {
             @Override
@@ -151,15 +160,47 @@ public class MainApp extends Application {
         });
         VBox.setVgrow(deviceListView, Priority.ALWAYS);
 
+        // 明确显示当前选中哪台设备：列表刷新后仍然保持选中，这里同步更新文案
+        selectedLabel = new Label("当前选中：未选择");
+        selectedLabel.getStyleClass().add("selected-label");
+        selectedLabel.setWrapText(true);
+        deviceListView.getSelectionModel().selectedItemProperty()
+                .addListener((obs, oldV, newV) -> updateSelectedLabel());
+
         Label hint = new Label("设备需与本机连接同一 WiFi/路由器");
         hint.setWrapText(true);
         hint.getStyleClass().add("hint");
 
-        VBox box = new VBox(8, title, deviceListView, hint);
+        VBox box = new VBox(8, header, deviceListView, selectedLabel, hint);
         box.setPadding(new Insets(12));
         box.setPrefWidth(270);
         box.getStyleClass().add("side-panel");
         return box;
+    }
+
+    /** 手动刷新设备列表：立即再广播一次发现报文，已选中的设备保持不变 */
+    private void refreshDevices() {
+        if (discovery == null || !discovery.isRunning()) {
+            log("设备发现未运行，无法刷新");
+            return;
+        }
+        discovery.requestAnnounce();
+        log("已刷新设备列表（当前在线 " + peerList.size() + " 台）");
+        updateSelectedLabel();
+    }
+
+    private void updateSelectedLabel() {
+        if (selectedLabel == null || deviceListView == null) {
+            return;
+        }
+        DeviceInfo sel = deviceListView.getSelectionModel().getSelectedItem();
+        if (sel == null) {
+            selectedLabel.setText("当前选中：未选择");
+            return;
+        }
+        String tag = DeviceInfo.TYPE_ANDROID.equals(sel.getDeviceType()) ? "[手机] " : "[电脑] ";
+        selectedLabel.setText("当前选中：" + tag + sel.getDeviceName()
+                + "\n" + sel.getIp() + ":" + sel.getHttpPort());
     }
 
     private VBox buildSyncPanel() {
@@ -255,6 +296,7 @@ public class MainApp extends Application {
                 DeviceInfo candidate = new DeviceInfo(self.getDeviceId(), self.getDeviceName(),
                         self.getDeviceType(), "", port, 1);
                 HttpFileServer srv = new HttpFileServer(candidate, null, null);
+                srv.setLogListener(this::log);
                 srv.start();
                 this.fileServer = srv;
                 return port;
@@ -452,9 +494,11 @@ public class MainApp extends Application {
         for (DeviceInfo d : peerList) {
             if (selectedId.equals(d.getDeviceId())) {
                 deviceListView.getSelectionModel().select(d);
+                updateSelectedLabel();
                 return;
             }
         }
+        updateSelectedLabel();
     }
 
     private void log(String message) {

@@ -82,6 +82,7 @@ public class SyncEngine {
         if (l != null) {
             l.onStart();
         }
+        relayLine("===== 开始同步 =====");
 
         try {
             Manifest remoteManifest = peer.fetchManifest();
@@ -195,6 +196,7 @@ public class SyncEngine {
             if (l != null) {
                 l.onComplete(changed);
             }
+            relayLine("===== 同步完成，变更 " + changed + " 项 =====");
         }
     }
 
@@ -316,6 +318,7 @@ public class SyncEngine {
         if (l != null) {
             l.onAction(action, path);
         }
+        relayLine(action + "  " + path);
     }
 
     private void fireActionDone(String action, String path) {
@@ -332,6 +335,27 @@ public class SyncEngine {
         } else {
             System.err.println("[sync] " + path + " 处理失败: " + e.getMessage());
         }
+        relayLine("错误 [" + path + "]: " + e.getMessage());
+    }
+
+    /**
+     * 把日志转发给对端：发起同步的一端推送，对端在日志区同步显示，
+     * 这样任一端都能看到「另一端正在同步什么」。
+     * 接收端不会再转发（接收端不执行 runOnce），因此不存在日志回环。
+     */
+    private void relayLine(String line) {
+        RemotePeerClient c = client;
+        if (c == null) {
+            return;
+        }
+        String from = self == null ? "peer" : self.getDeviceName();
+        LogRelay.post(() -> {
+            try {
+                c.sendLog(from, line);
+            } catch (Exception ignored) {
+                // 对端日志通道不可用时静默忽略，绝不影响同步本身
+            }
+        });
     }
 
     private static String buildConflictPath(String path, String peerName) {

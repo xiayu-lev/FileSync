@@ -10,6 +10,8 @@ public final class ApiPaths {
     public static final String MANIFEST = "/api/manifest";
     public static final String FILE = "/api/file";
     public static final String PING = "/api/ping";
+    /** 跨端日志推送：一端同步时把日志转发给对端 */
+    public static final String LOG = "/api/log";
 
     public static final String PARAM_PATH = "path";
     public static final String PARAM_MTIME = "mtime";
