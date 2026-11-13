@@ -337,7 +337,9 @@ public class MainApp extends Application {
             config.setLastSyncDir(directory.getAbsolutePath());
             config.save();
 
-            engine = new SyncEngine(syncRoot, self);
+            // 墓碑等状态写进 %USERPROFILE%\.filesync-desktop\state-*，不污染用户选择的同步目录
+            File stateBase = new File(System.getProperty("user.home"), ".filesync-desktop");
+            engine = new SyncEngine(syncRoot, self, stateBase);
             engine.setListener(buildSyncListener());
 
             if (fileServer != null) {

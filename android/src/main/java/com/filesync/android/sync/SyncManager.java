@@ -92,7 +92,8 @@ public class SyncManager {
                 .retryOnConnectionFailure(true)
                 .build();
 
-        engine = new SyncEngine(syncRoot, self);
+        // 状态放在应用私有目录，不再往用户同步目录里写 .filesync
+        engine = new SyncEngine(syncRoot, self, new File(appContext.getFilesDir(), "syncState"));
         engine.setListener(new SyncListener() {
             @Override
             public void onStart() {

@@ -24,9 +24,11 @@ public class TombstoneStore {
     private final File storeFile;
     private final List<Tombstone> tombstones = new ArrayList<>();
 
-    public TombstoneStore(File syncRoot) {
-        File internal = new File(syncRoot, SyncConstants.INTERNAL_DIR);
-        this.storeFile = new File(internal, SyncConstants.TOMBSTONE_FILE);
+    /**
+     * @param stateDir 状态目录（位于应用私有目录，不在同步根内），tombstones.json 就放在这里
+     */
+    public TombstoneStore(File stateDir) {
+        this.storeFile = new File(stateDir, SyncConstants.TOMBSTONE_FILE);
     }
 
     public synchronized void load() throws IOException {

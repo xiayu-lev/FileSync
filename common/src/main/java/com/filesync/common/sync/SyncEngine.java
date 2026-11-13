@@ -49,10 +49,58 @@ public class SyncEngine {
     private volatile boolean cancelled;
 
     public SyncEngine(File syncRoot, DeviceInfo self) throws IOException {
+        this(syncRoot, self, syncRoot);
+    }
+
+    /**
+     * @param stateBaseDir 状态根目录。墓碑存放在 stateBaseDir 下按同步根路径散列的私有子目录里，
+     *                     不再往同步根里写 `.filesync`，避免每次同步都给用户目录塞进额外文件夹。
+     */
+    public SyncEngine(File syncRoot, DeviceInfo self, File stateBaseDir) throws IOException {
         this.syncRoot = syncRoot;
         this.self = self;
-        this.tombstoneStore = new TombstoneStore(syncRoot);
+        File stateDir = resolveStateDir(syncRoot, stateBaseDir);
+        this.tombstoneStore = new TombstoneStore(stateDir);
+        migrateLegacyTombstones(syncRoot, stateDir);
         this.tombstoneStore.load();
+    }
+
+    private static File resolveStateDir(File syncRoot, File base) {
+        String path = syncRoot.getAbsolutePath().toLowerCase(java.util.Locale.ROOT);
+        String key = Integer.toHexString(path.hashCode());
+        return new File(base, "state-" + key);
+    }
+
+    /** 老版本把墓碑写在同步根的 `.filesync/tombstones.json`，升级时迁移过去并清掉遗留目录 */
+    private static void migrateLegacyTombstones(File syncRoot, File stateDir) {
+        File legacy = new File(new File(syncRoot, SyncConstants.INTERNAL_DIR),
+                SyncConstants.TOMBSTONE_FILE);
+        if (!legacy.isFile()) {
+            return;
+        }
+        try {
+            File target = new File(stateDir, SyncConstants.TOMBSTONE_FILE);
+            if (!target.isFile()) {
+                if (!stateDir.exists() && !stateDir.mkdirs()) {
+                    return;
+                }
+                java.nio.file.Files.copy(legacy.toPath(), target.toPath(),
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
+            File tmp = new File(legacy.getParentFile(), SyncConstants.TOMBSTONE_FILE + ".tmp");
+            if (tmp.isFile()) {
+                tmp.delete();
+            }
+            if (legacy.delete()) {
+                File dir = legacy.getParentFile();
+                String[] rest = dir.list();
+                if (rest != null && rest.length == 0) {
+                    dir.delete();
+                }
+            }
+        } catch (IOException ignored) {
+            // 迁移失败不影响本次同步，下一轮会再尝试
+        }
     }
 
     public void setListener(SyncListener listener) {

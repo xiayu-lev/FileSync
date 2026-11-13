@@ -30,6 +30,11 @@ public final class FileWalker {
             return;
         }
         for (File child : children) {
+            // 隐藏条目一律不入清单：.filesync 状态目录、相册/音乐的系统缓存 .thumbnails、
+            // 安卓回收站 .trashed-* 等，否则每轮同步都会把它们复制到对端，变成一堆多余文件夹和文档
+            if (child.getName().startsWith(".")) {
+                continue;
+            }
             String rel = PathUtils.toRelative(root, child);
             if (rel.equals(SyncConstants.INTERNAL_DIR)
                     || rel.startsWith(SyncConstants.INTERNAL_DIR + "/")) {

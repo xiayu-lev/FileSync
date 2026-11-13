@@ -189,6 +189,7 @@ gradlew.bat build -x test
 | 新设备上线要等一个广播周期才出现 | 发现只有周期性广播，无手动触发 | 两端新增「刷新」按钮 → `requestAnnounce()` 立即补广播一次 |
 | 列表刷新后看不清当前选中哪台 | 选中状态在列表重建时丢失，界面也没有显式提示 | 两端按设备 ID 保持选中，并增加「当前选中」提示条（手机列表项带选中底色） |
 | 手机端一发起同步就失败：`CLEARTEXT communication … not permitted by network security policy` | Android 9+ 默认禁止明文 HTTP，服务端是纯 HTTP，而 manifest 未声明允许明文 | `<application>` 增加 `android:usesCleartextTraffic="true"`（1.0.3）。实测手机发起同步「同步完成，变更 2 项」，电脑端同秒弹出 `[来自 24129PN74C的手机]` 四条日志 |
+| 每次同步都在同步目录里多出一堆文件夹和文档 | 扫描只跳过 `.filesync` 和 `.part`，`子目录`、`报告.txt` 这类历史测试文件与 `.thumbnails`/`.trashed-*` 系统缓存被当成正常内容互拷；墓碑文件还写在同步根里 | 1.0.4：扫描跳过所有 `.` 开头的隐藏条目；墓碑状态迁到应用私有目录（电脑 `%USERPROFILE%\.filesync-desktop\state-*`、手机 `files/syncState/state-*`），并按同步根路径散列隔离。实测同步后 `E:\Music` 与 `.Music` 各 120 首、无 `.filesync`/`.part`/多余目录，第二轮同步「变更 0 项」 |
 
 实测结果（电脑 ↔ 小米 15，经真实网络地址而非 adb 端口转发）：
 
@@ -222,5 +223,6 @@ gradlew.bat build -x test
 ## 十、版本
 
 - protocolVersion：1
-- 版本：1.0.3（Android 端修复明文 HTTP 被系统拦截导致的「手机同步一直失败」）
+- 版本：1.0.4（同步不再往用户目录塞多余文件夹/文档：跳过隐藏条目，状态目录移出同步根）
+- 上一版：1.0.3（Android 端修复明文 HTTP 被系统拦截导致的「手机同步一直失败」）
 - 上一版：1.0.2（跨端日志实时互推、两端刷新按钮、选中设备保持）
