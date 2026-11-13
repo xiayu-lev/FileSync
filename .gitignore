@@ -1,0 +1,21 @@
+# Gradle
+.gradle/
+build/
+
+# 本地 SDK 配置（每台机器路径不同，不应提交）
+local.properties
+android/local.properties
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.project
+.classpath
+.settings/
+
+# 系统
+.DS_Store
+Thumbs.db

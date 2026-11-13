@@ -1,0 +1,4 @@
+// 公共模块：纯 Java 8 编写，同时被桌面端与 Android 端复用
+dependencies {
+    api 'com.google.code.gson:gson:2.11.0'
+}

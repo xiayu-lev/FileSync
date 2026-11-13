@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="同步目录（应用专属存储）"
+        android:textStyle="bold"
+        android:textColor="#1f2d3d" />
+
+    <TextView
+        android:id="@+id/tv_dir"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="初始化中..."
+        android:textColor="#5c6b7a"
+        android:textSize="12sp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="局域网在线设备（需连接同一 WiFi）"
+        android:textStyle="bold"
+        android:textColor="#1f2d3d" />
+
+    <ListView
+        android:id="@+id/lv_peers"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="2"
+        android:layout_marginTop="6dp"
+        android:background="#f5f7fa"
+        android:minHeight="160dp" />
+
+    <Button
+        android:id="@+id/btn_sync"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:backgroundTint="#0F9D8F"
+        android:text="立即同步"
+        android:textColor="#ffffff" />
+
+    <ProgressBar
+        android:id="@+id/progress"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:max="100" />
+
+    <TextView
+        android:id="@+id/tv_progress"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="空闲"
+        android:textColor="#5c6b7a"
+        android:textSize="12sp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:text="同步日志"
+        android:textStyle="bold"
+        android:textColor="#1f2d3d" />
+
+    <ScrollView
+        android:id="@+id/log_scroll"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="6dp"
+        android:layout_weight="2"
+        android:background="#1f2d3d"
+        android:minHeight="140dp">
+
+        <TextView
+            android:id="@+id/tv_log"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:padding="8dp"
+            android:textColor="#d6e0ea"
+            android:textSize="12sp" />
+    </ScrollView>
+</LinearLayout>

@@ -1,0 +1,140 @@
+.root {
+    -fx-font-family: "Microsoft YaHei UI", "Segoe UI", sans-serif;
+    -fx-font-size: 13px;
+    -fx-background-color: #f5f7fa;
+}
+
+.top-bar {
+    -fx-background-color: #ffffff;
+    -fx-border-color: transparent transparent #e3e8ef transparent;
+    -fx-border-width: 0 0 1 0;
+}
+
+.side-panel {
+    -fx-background-color: #ffffff;
+    -fx-border-color: transparent #e3e8ef transparent transparent;
+    -fx-border-width: 0 1 0 0;
+}
+
+.status-bar {
+    -fx-background-color: #ffffff;
+    -fx-border-color: #e3e8ef transparent transparent transparent;
+    -fx-border-width: 1 0 0 0;
+}
+
+.panel-title {
+    -fx-font-size: 14px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #1f2d3d;
+}
+
+.hint {
+    -fx-text-fill: #8492a6;
+    -fx-font-size: 12px;
+}
+
+.text-field {
+    -fx-background-color: #f5f7fa;
+    -fx-background-radius: 6;
+    -fx-border-color: #d3dce6;
+    -fx-border-radius: 6;
+    -fx-padding: 7 10;
+}
+
+.text-field:focused {
+    -fx-border-color: #0f9d8f;
+    -fx-background-color: #ffffff;
+}
+
+.button {
+    -fx-background-color: #ffffff;
+    -fx-border-color: #d3dce6;
+    -fx-border-radius: 6;
+    -fx-background-radius: 6;
+    -fx-padding: 7 16;
+    -fx-cursor: hand;
+}
+
+.button:hover {
+    -fx-border-color: #0f9d8f;
+    -fx-text-fill: #0f9d8f;
+}
+
+.primary-button {
+    -fx-background-color: #0f9d8f;
+    -fx-border-color: #0f9d8f;
+    -fx-text-fill: #ffffff;
+    -fx-font-weight: bold;
+}
+
+.primary-button:hover {
+    -fx-background-color: #0c857a;
+    -fx-border-color: #0c857a;
+    -fx-text-fill: #ffffff;
+}
+
+.button:disabled {
+    -fx-opacity: 0.5;
+    -fx-cursor: default;
+}
+
+.list-view {
+    -fx-background-color: #f5f7fa;
+    -fx-border-color: #e3e8ef;
+    -fx-border-radius: 6;
+    -fx-background-radius: 6;
+}
+
+.list-cell {
+    -fx-background-color: transparent;
+    -fx-padding: 8 10;
+    -fx-border-color: transparent transparent #eef1f5 transparent;
+}
+
+.list-cell:filled:hover {
+    -fx-background-color: #eef7f6;
+}
+
+.list-cell:filled:selected {
+    -fx-background-color: #d5efec;
+    -fx-text-fill: #0c6b63;
+}
+
+.text-area {
+    -fx-background-color: #1f2d3d;
+    -fx-border-radius: 6;
+    -fx-background-radius: 6;
+}
+
+.text-area .content {
+    -fx-background-color: #1f2d3d;
+}
+
+.text-area .text {
+    -fx-fill: #d6e0ea;
+    -fx-font-family: "Consolas", "Microsoft YaHei UI", monospace;
+    -fx-font-size: 12px;
+}
+
+.progress-bar {
+    -fx-background-color: #e3e8ef;
+    -fx-background-radius: 6;
+}
+
+.progress-bar .track {
+    -fx-background-color: #e3e8ef;
+    -fx-background-radius: 6;
+}
+
+.progress-bar .bar {
+    -fx-background-color: #0f9d8f;
+    -fx-background-radius: 6;
+}
+
+.check-box {
+    -fx-text-fill: #3c4858;
+}
+
+.separator {
+    -fx-background-color: #e3e8ef;
+}

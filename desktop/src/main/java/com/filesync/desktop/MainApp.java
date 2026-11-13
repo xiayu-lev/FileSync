@@ -1,0 +1,459 @@
+package com.filesync.desktop;
+
+import com.filesync.common.discovery.DeviceDiscovery;
+import com.filesync.common.discovery.DiscoveryListener;
+import com.filesync.common.model.DeviceInfo;
+import com.filesync.common.sync.SyncEngine;
+import com.filesync.common.sync.SyncListener;
+import com.filesync.desktop.net.DesktopPeerClient;
+import com.filesync.desktop.net.HttpFileServer;
+import com.filesync.desktop.sync.DirectoryWatcher;
+import com.filesync.desktop.sync.DirectoryWatchListener;
+
+import javafx.application.Application;
+import javafx.application.Platform;
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
+import javafx.geometry.Insets;
+import javafx.geometry.Pos;
+import javafx.scene.Scene;
+import javafx.scene.control.Button;
+import javafx.scene.control.CheckBox;
+import javafx.scene.control.Label;
+import javafx.scene.control.ListCell;
+import javafx.scene.control.ListView;
+import javafx.scene.control.ProgressBar;
+import javafx.scene.control.Separator;
+import javafx.scene.control.TextArea;
+import javafx.scene.control.TextField;
+import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.VBox;
+import javafx.stage.DirectoryChooser;
+import javafx.stage.Stage;
+
+import java.io.File;
+import java.time.LocalTime;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicLong;
+
+/**
+ * JavaFX 桌面端入口。
+ */
+public class MainApp extends Application {
+
+    private static final int DEFAULT_PORT = 18080;
+    private static final int MAX_PORT_TRIES = 20;
+    private static final long AUTO_SYNC_MIN_GAP_MS = 3000L;
+
+    private final ObservableList<DeviceInfo> peerList = FXCollections.observableArrayList();
+    private final ExecutorService syncExecutor = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "fs-sync-worker");
+        t.setDaemon(true);
+        return t;
+    });
+
+    private ListView<DeviceInfo> deviceListView;
+    private TextField dirField;
+    private Button chooseDirBtn;
+    private Button syncBtn;
+    private Button cancelBtn;
+    private CheckBox autoSyncBox;
+    private ProgressBar progressBar;
+    private Label progressLabel;
+    private Label statusLabel;
+    private TextArea logArea;
+
+    private AppConfig config;
+    private DeviceInfo self;
+    private DeviceDiscovery discovery;
+    private HttpFileServer fileServer;
+    private DirectoryWatcher watcher;
+    private SyncEngine engine;
+
+    private volatile File syncRoot;
+    private volatile boolean syncRunning;
+    private final AtomicLong lastSyncAt = new AtomicLong(0L);
+
+    @Override
+    public void start(Stage stage) {
+        try {
+            config = new AppConfig();
+            config.load();
+        } catch (Exception e) {
+            fatalError("配置加载失败", e);
+            return;
+        }
+
+        BorderPane root = new BorderPane();
+        root.setTop(buildTopBar());
+        root.setLeft(buildDevicePanel());
+        root.setCenter(buildSyncPanel());
+        root.setBottom(buildStatusBar());
+
+        Scene scene = new Scene(root, 980, 640);
+        scene.getStylesheets().add(getClass().getResource("/desktop.css").toExternalForm());
+        stage.setTitle("FileSync 文件同步 - 桌面端");
+        stage.setScene(scene);
+        stage.setOnCloseRequest(e -> shutdown());
+        stage.show();
+
+        bootstrapNetwork();
+        restoreLastDirectory();
+    }
+
+    private VBox buildTopBar() {
+        Label dirLabel = new Label("同步目录");
+        dirField = new TextField();
+        dirField.setPromptText("请选择需要同步的文件夹");
+        dirField.setEditable(false);
+        HBox.setHgrow(dirField, Priority.ALWAYS);
+
+        chooseDirBtn = new Button("选择目录");
+        chooseDirBtn.setOnAction(e -> chooseDirectory());
+
+        HBox row = new HBox(10, dirLabel, dirField, chooseDirBtn);
+        row.setPadding(new Insets(14, 16, 10, 16));
+        row.setAlignment(Pos.CENTER_LEFT);
+
+        VBox box = new VBox(row);
+        box.getStyleClass().add("top-bar");
+        return box;
+    }
+
+    private VBox buildDevicePanel() {
+        Label title = new Label("局域网在线设备");
+        title.getStyleClass().add("panel-title");
+
+        deviceListView = new ListView<>(peerList);
+        deviceListView.setCellFactory(lv -> new ListCell<>() {
+            @Override
+            protected void updateItem(DeviceInfo item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                } else {
+                    String tag = DeviceInfo.TYPE_ANDROID.equals(item.getDeviceType())
+                            ? "[手机] " : "[电脑] ";
+                    setText(tag + item.getDeviceName() + "\n" + item.getIp()
+                            + ":" + item.getHttpPort());
+                }
+            }
+        });
+        VBox.setVgrow(deviceListView, Priority.ALWAYS);
+
+        Label hint = new Label("设备需与本机连接同一 WiFi/路由器");
+        hint.setWrapText(true);
+        hint.getStyleClass().add("hint");
+
+        VBox box = new VBox(8, title, deviceListView, hint);
+        box.setPadding(new Insets(12));
+        box.setPrefWidth(270);
+        box.getStyleClass().add("side-panel");
+        return box;
+    }
+
+    private VBox buildSyncPanel() {
+        syncBtn = new Button("立即同步");
+        syncBtn.getStyleClass().add("primary-button");
+        syncBtn.setOnAction(e -> triggerSync());
+
+        cancelBtn = new Button("停止");
+        cancelBtn.setDisable(true);
+        cancelBtn.setOnAction(e -> {
+            if (engine != null) {
+                engine.cancel();
+            }
+        });
+
+        autoSyncBox = new CheckBox("自动同步（目录变化时自动执行）");
+
+        HBox buttonRow = new HBox(10, syncBtn, cancelBtn, autoSyncBox);
+        buttonRow.setAlignment(Pos.CENTER_LEFT);
+
+        progressLabel = new Label("空闲");
+        progressBar = new ProgressBar(0);
+        progressBar.setPrefWidth(Double.MAX_VALUE);
+
+        VBox progressBox = new VBox(6, progressLabel, progressBar);
+        progressBox.setPadding(new Insets(12, 0, 12, 0));
+
+        Separator separator = new Separator();
+
+        Label logTitle = new Label("同步日志");
+        logTitle.getStyleClass().add("panel-title");
+        logArea = new TextArea();
+        logArea.setEditable(false);
+        logArea.setWrapText(true);
+        VBox.setVgrow(logArea, Priority.ALWAYS);
+
+        VBox box = new VBox(10, buttonRow, progressBox, separator, logTitle, logArea);
+        box.setPadding(new Insets(14, 16, 14, 16));
+        return box;
+    }
+
+    private HBox buildStatusBar() {
+        statusLabel = new Label("正在初始化...");
+        statusLabel.getStyleClass().add("hint");
+        HBox bar = new HBox(statusLabel);
+        bar.setPadding(new Insets(8, 16, 8, 16));
+        bar.getStyleClass().add("status-bar");
+        return bar;
+    }
+
+    private void bootstrapNetwork() {
+        self = new DeviceInfo(config.getDeviceId(), config.getDeviceName(),
+                DeviceInfo.TYPE_DESKTOP, "", DEFAULT_PORT, 1);
+
+        // HTTP 服务启动，端口被占用则递增
+        int port = startServerWithFallback();
+        self.setHttpPort(port);
+
+        try {
+            discovery = new DeviceDiscovery(self);
+            discovery.setListener(new DiscoveryListener() {
+                @Override
+                public void onDeviceFound(DeviceInfo device) {
+                    Platform.runLater(() -> upsertPeer(device));
+                }
+
+                @Override
+                public void onDeviceUpdated(DeviceInfo device) {
+                    Platform.runLater(() -> upsertPeer(device));
+                }
+
+                @Override
+                public void onDeviceLost(DeviceInfo device) {
+                    Platform.runLater(() -> {
+                        peerList.removeIf(d -> d.getDeviceId().equals(device.getDeviceId()));
+                        log("设备离线: " + device.getDeviceName());
+                    });
+                }
+            });
+            discovery.start();
+            statusLabel.setText("运行中 | 本机: " + config.getDeviceName()
+                    + " | 服务端口: " + port + " | 等待设备接入");
+            log("本机服务已启动，监听端口 " + port);
+        } catch (Exception e) {
+            log("设备发现启动失败: " + e.getMessage());
+        }
+    }
+
+    private int startServerWithFallback() {
+        Exception lastError = null;
+        for (int port = DEFAULT_PORT; port < DEFAULT_PORT + MAX_PORT_TRIES; port++) {
+            try {
+                DeviceInfo candidate = new DeviceInfo(self.getDeviceId(), self.getDeviceName(),
+                        self.getDeviceType(), "", port, 1);
+                HttpFileServer srv = new HttpFileServer(candidate, null, null);
+                srv.start();
+                this.fileServer = srv;
+                return port;
+            } catch (Exception e) {
+                lastError = e;
+            }
+        }
+        throw new IllegalStateException("无法在 " + DEFAULT_PORT + "~"
+                + (DEFAULT_PORT + MAX_PORT_TRIES - 1) + " 找到可用端口", lastError);
+    }
+
+    private void restoreLastDirectory() {
+        String last = config.getLastSyncDir();
+        if (last != null && !last.isEmpty() && new File(last).isDirectory()) {
+            bindSyncDirectory(new File(last));
+        }
+    }
+
+    private void chooseDirectory() {
+        DirectoryChooser chooser = new DirectoryChooser();
+        chooser.setTitle("选择同步目录");
+        if (syncRoot != null) {
+            chooser.setInitialDirectory(syncRoot);
+        }
+        File selected = chooser.showDialog(chooseDirBtn.getScene().getWindow());
+        if (selected != null) {
+            bindSyncDirectory(selected);
+        }
+    }
+
+    private void bindSyncDirectory(File directory) {
+        try {
+            if (watcher != null) {
+                watcher.stop();
+            }
+            syncRoot = directory;
+            dirField.setText(directory.getAbsolutePath());
+            config.setLastSyncDir(directory.getAbsolutePath());
+            config.save();
+
+            engine = new SyncEngine(syncRoot, self);
+            engine.setListener(buildSyncListener());
+
+            if (fileServer != null) {
+                fileServer.setSyncRoot(syncRoot);
+                fileServer.setTombstoneStore(engine.tombstoneStore());
+            }
+
+            watcher = new DirectoryWatcher();
+            watcher.setListener(new DirectoryWatchListener() {
+                @Override
+                public void onChanged(String relPath) {
+                    if (autoSyncBox.isSelected()) {
+                        scheduleAutoSync();
+                    }
+                }
+
+                @Override
+                public void onDeleted(String relPath) {
+                    try {
+                        if (engine != null) {
+                            engine.recordLocalDelete(relPath);
+                        }
+                    } catch (Exception e) {
+                        log("墓碑记录失败: " + e.getMessage());
+                    }
+                }
+            });
+            watcher.start(directory.toPath());
+            log("已绑定同步目录: " + directory.getAbsolutePath());
+        } catch (Exception e) {
+            log("目录绑定失败: " + e.getMessage());
+        }
+    }
+
+    private void scheduleAutoSync() {
+        long now = System.currentTimeMillis();
+        if (now - lastSyncAt.get() < AUTO_SYNC_MIN_GAP_MS) {
+            return;
+        }
+        triggerSync();
+    }
+
+    private void triggerSync() {
+        if (syncRunning) {
+            return;
+        }
+        if (syncRoot == null || engine == null) {
+            log("请先选择同步目录");
+            return;
+        }
+        DeviceInfo peer = deviceListView.getSelectionModel().getSelectedItem();
+        if (peer == null) {
+            log("请先在左侧选择要同步的设备");
+            return;
+        }
+
+        syncRunning = true;
+        lastSyncAt.set(System.currentTimeMillis());
+        syncBtn.setDisable(true);
+        cancelBtn.setDisable(false);
+        progressBar.setProgress(0);
+
+        syncExecutor.submit(() -> {
+            DesktopPeerClient client = new DesktopPeerClient(peer);
+            try {
+                engine.runOnce(client);
+            } catch (Exception e) {
+                Platform.runLater(() -> log("同步失败: " + e.getMessage()));
+            } finally {
+                client.close();
+                Platform.runLater(() -> {
+                    syncRunning = false;
+                    syncBtn.setDisable(false);
+                    cancelBtn.setDisable(true);
+                    progressLabel.setText("空闲");
+                    progressBar.setProgress(0);
+                });
+            }
+        });
+    }
+
+    private SyncListener buildSyncListener() {
+        return new SyncListener() {
+            @Override
+            public void onStart() {
+                Platform.runLater(() -> {
+                    progressLabel.setText("正在同步...");
+                    log("===== 开始同步 =====");
+                });
+            }
+
+            @Override
+            public void onAction(String action, String relPath) {
+                Platform.runLater(() -> log(action + "  " + relPath));
+            }
+
+            @Override
+            public void onProgress(String relPath, long transferred, long total) {
+                if (total <= 0) {
+                    return;
+                }
+                Platform.runLater(() -> {
+                    progressBar.setProgress((double) transferred / total);
+                    progressLabel.setText(relPath + "  "
+                            + (transferred / 1024) + " / " + (total / 1024) + " KB");
+                });
+            }
+
+            @Override
+            public void onActionDone(String action, String relPath) {
+                // 动作完成由日志体现，无需额外处理
+            }
+
+            @Override
+            public void onComplete(int changedCount) {
+                Platform.runLater(() -> log("===== 同步完成，变更 " + changedCount + " 项 ====="));
+            }
+
+            @Override
+            public void onError(String relPath, Exception error) {
+                Platform.runLater(() -> log("错误 [" + relPath + "]: " + error.getMessage()));
+            }
+        };
+    }
+
+    private void upsertPeer(DeviceInfo device) {
+        peerList.removeIf(d -> d.getDeviceId().equals(device.getDeviceId()));
+        peerList.add(device);
+    }
+
+    private void log(String message) {
+        String line = LocalTime.now().withNano(0) + "  " + message;
+        if (Platform.isFxApplicationThread()) {
+            logArea.appendText(line + "\n");
+        } else {
+            Platform.runLater(() -> logArea.appendText(line + "\n"));
+        }
+    }
+
+    private void fatalError(String message, Exception e) {
+        System.err.println(message + ": " + e.getMessage());
+    }
+
+    private void shutdown() {
+        try {
+            if (watcher != null) {
+                watcher.stop();
+            }
+            if (discovery != null) {
+                discovery.stop();
+            }
+            if (fileServer != null) {
+                fileServer.stop();
+            }
+            syncExecutor.shutdownNow();
+        } catch (Exception ignored) {
+        }
+    }
+
+    @Override
+    public void stop() {
+        shutdown();
+    }
+
+    public static void main(String[] args) {
+        launch(args);
+    }
+}

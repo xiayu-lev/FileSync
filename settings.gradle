@@ -1,0 +1,40 @@
+pluginManagement {
+    repositories {
+        maven { url 'https://mirrors.cloud.tencent.com/nexus/repository/maven-public/' }
+        maven { url 'https://maven.aliyun.com/repository/gradle-plugin' }
+        maven { url 'https://maven.aliyun.com/repository/google' }
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+dependencyResolutionManagement {
+    repositories {
+        maven { url 'https://mirrors.cloud.tencent.com/nexus/repository/maven-public/' }
+        maven { url 'https://maven.aliyun.com/repository/public' }
+        maven { url 'https://maven.aliyun.com/repository/google' }
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = 'FileSync'
+
+include ':common'
+include ':desktop'
+
+// Android 模块仅在检测到 Android SDK 时纳入构建，
+// 这样没有 SDK 的机器也能直接构建桌面端与公共模块。
+def sdkDir = System.getenv('ANDROID_HOME') ?: System.getenv('ANDROID_SDK_ROOT')
+def localPropsFile = new File(rootDir, 'android/local.properties')
+if (localPropsFile.exists()) {
+    def props = new Properties()
+    localPropsFile.withInputStream { props.load(it) }
+    if (props.getProperty('sdk.dir')) {
+        sdkDir = props.getProperty('sdk.dir')
+    }
+}
+if (sdkDir || startParameter.projectProperties.containsKey('includeAndroid')) {
+    include ':android'
+}

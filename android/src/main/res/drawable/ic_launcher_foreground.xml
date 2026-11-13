@@ -1,0 +1,13 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 双向同步箭头，位于自适应图标中心安全区 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M34,46 h31 l-8,-8 l5,-5 l17,17 l-17,17 l-5,-5 l8,-8 h-31 z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M74,62 h-31 l8,8 l-5,5 l-17,-17 l17,-17 l5,5 l-8,8 h31 z" />
+</vector>
