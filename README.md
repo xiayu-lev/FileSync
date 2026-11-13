@@ -164,35 +164,33 @@ sdk.dir=C\:/path/to/Android/Sdk
 gradlew.bat build -x test
 ```
 
-### 桌面端打包 Windows exe（jpackage）
+### 桌面端打包 Windows exe（jpackage + Inno Setup）
 
-需要 JDK 21 自带的 `jpackage`，生成安装包（`--type exe`）时还需要 WiX Toolset v3
-的 `candle.exe` / `light.exe` 在 PATH 上（`--type app-image` 不需要 WiX）。
+桌面端产物分两层：`jpackage` 只负责生成「内置 JRE + 启动 exe」的 app-image，
+安装包由 Inno Setup 编译，这样可以自定义安装目录（jpackage 的 `--install-dir`
+在 Windows 上只支持默认位置下的相对子路径，不能换盘）。
+
+环境：JDK 21（含 `jpackage`）、Inno Setup 6（`ISCC.exe`）；`--type app-image` 不需要 WiX。
 
 ```powershell
-# 1. 准备运行时依赖（common + gson + JavaFX win 版 jar）
+# 1. 运行时依赖（common + gson + JavaFX win 版 jar）与 app-image
 gradlew.bat :desktop:installDist
-
-# 2. 免安装版：产出 FileSync\FileSync.exe + 内置 runtime
-jpackage --type app-image --name FileSync --app-version 1.0.7 `
+jpackage --type app-image --name FileSync --app-version 1.0.8 `
   --input desktop\build\install\desktop\lib `
   --main-jar desktop-1.0.1.jar --main-class com.filesync.desktop.Launcher `
-  --icon desktop\packaging\fileSync.ico --dest dist
+  --icon desktop\packaging\fileSync.ico --dest desktop\build\jpackage
 
-# 3. 安装包：单个 exe，带安装向导、开始菜单与桌面快捷方式（按用户安装，免管理员）
-jpackage --type exe --name FileSync --app-version 1.0.7 `
-  --input desktop\build\install\desktop\lib `
-  --main-jar desktop-1.0.1.jar --main-class com.filesync.desktop.Launcher `
-  --icon desktop\packaging\fileSync.ico --dest dist `
-  --win-per-user-install --win-menu --win-menu-group "FileSync" --win-shortcut --win-dir-chooser
+# 2. 安装包：中文向导，默认装到 E:\Program Files (x86)\FileSync
+ISCC.exe desktop\packaging\FileSync.iss
 ```
 
 > 入口类必须是 `com.filesync.desktop.Launcher`，不能用 `MainApp`：Java 启动器对直接
 > 继承 `Application` 的 main class 会强制检查 `javafx.graphics` 模块，classpath 分发
 > 的 JavaFX 会被判为“缺少 JavaFX 运行时组件”。
 
-产物：`dist\FileSync-1.0.7.exe`（安装包，约 63 MB）、`dist\FileSync\`（免安装目录，
-可整体压缩成 zip，约 159 MB 展开 / 60 MB 压缩）。
+产物：`desktop\build\inno\FileSync-1.0.8-Setup.exe`（约 42 MB）、
+`desktop\build\jpackage\FileSync\`（免安装目录，展开约 160 MB，压缩约 60 MB）。
+安装包会创建开始菜单与桌面快捷方式，卸载入口在 `E:\Program Files (x86)\FileSync\unins000.exe`。
 
 ---
 
@@ -255,6 +253,7 @@ jpackage --type exe --name FileSync --app-version 1.0.7 `
 ## 十、版本
 
 - protocolVersion：1
+- 版本：1.0.8（电脑端与手机端统一图标：青绿渐变圆角方块 + 双向白箭头，桌面端补齐 16~256 多尺寸 ICO，手机端自适应图标改渐变底；桌面安装包默认装到 `E:\Program Files (x86)\FileSync`）
 - 版本：1.0.7（手机端界面重做：状态栏/导航栏透明、渐变色头图、圆角卡片与选中高亮）
 - 版本：1.0.7 桌面端打包（jpackage：`FileSync-1.0.7.exe` 安装包 + 免安装便携版，内置 JRE 21 与 JavaFX 21，无需本机装 JDK）
 - 版本：1.0.6（同步完成日志改为两行：`===== 同步完成 =====` + 「新增 X 项 · 删除 Z 项 · 共 N 项」，窄屏不折行）

@@ -19,6 +19,7 @@ import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
+import javafx.scene.image.Image;
 import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.Label;
@@ -104,6 +105,12 @@ public class MainApp extends Application {
 
         Scene scene = new Scene(root, 980, 640);
         scene.getStylesheets().add(getClass().getResource("/desktop.css").toExternalForm());
+        // 窗口/任务栏图标与手机端、安装包保持同一套图标
+        try {
+            stage.getIcons().add(new Image(getClass().getResource("/app-icon.png").toExternalForm()));
+        } catch (Exception ignored) {
+            // 图标缺失不影响功能
+        }
         stage.setTitle("FileSync 文件同步 - 桌面端");
         stage.setScene(scene);
         stage.setOnCloseRequest(e -> shutdown());

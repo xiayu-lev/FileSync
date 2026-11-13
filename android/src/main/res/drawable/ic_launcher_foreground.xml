@@ -3,11 +3,11 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- 双向同步箭头，位于自适应图标中心安全区 -->
+    <!-- 双向同步箭头，与桌面端图标同一套几何 -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M34,46 h31 l-8,-8 l5,-5 l17,17 l-17,17 l-5,-5 l8,-8 h-31 z" />
+        android:pathData="M24,39.5 H69 V30.5 L87,44 L69,57.5 V48.5 H24 Z" />
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M74,62 h-31 l8,8 l-5,5 l-17,-17 l17,-17 l5,5 l-8,8 h31 z" />
+        android:pathData="M84,59.5 H39 V50.5 L21,64 L39,77.5 V68.5 H84 Z" />
 </vector>
