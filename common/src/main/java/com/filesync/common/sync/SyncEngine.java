@@ -90,12 +90,14 @@ public class SyncEngine {
             Map<String, Tombstone> remoteTomb = indexTombstones(remoteManifest.getTombstones());
 
             // 1. 对端墓碑：删除本地仍保留、且删除时间之后未再修改的文件
+            //    对端清单里同时还能看到这个文件时，说明墓碑已过期（文件被重建），不能删本地
             for (Tombstone t : remoteManifest.getTombstones()) {
                 if (cancelled) {
                     break;
                 }
                 FileMeta local = localMap.get(t.getPath());
-                if (local != null && local.getLastModified() <= t.getDeletedAt()) {
+                if (local != null && !remoteMap.containsKey(t.getPath())
+                        && local.getLastModified() <= t.getDeletedAt()) {
                     if (deleteLocal(t.getPath())) {
                         changed++;
                     }
@@ -103,9 +105,14 @@ public class SyncEngine {
             }
 
             // 2. 本地墓碑：通知对端删除其仍保留的文件
+            //    本地文件又存在（重建/复制回来）时墓碑作废，否则会反复误删对端文件
             for (Tombstone t : tombstoneStore.all()) {
                 if (cancelled) {
                     break;
+                }
+                if (localMap.get(t.getPath()) != null) {
+                    tombstoneStore.remove(t.getPath());
+                    continue;
                 }
                 FileMeta remote = remoteMap.get(t.getPath());
                 if (remote != null && !remoteTomb.containsKey(t.getPath())
@@ -136,7 +143,25 @@ public class SyncEngine {
                     continue;
                 }
                 if (tombstoneStore.find(path) != null || remoteTomb.containsKey(path)) {
-                    continue;
+                    FileMeta localNow = localMap.get(path);
+                    Tombstone localTomb = tombstoneStore.find(path);
+                    if (localTomb != null) {
+                        // 本地文件比墓碑新：说明删除后又被重建，墓碑作废，正常同步
+                        if (localNow != null
+                                && localNow.getLastModified() > localTomb.getDeletedAt()) {
+                            tombstoneStore.remove(path);
+                        } else {
+                            continue;
+                        }
+                    }
+                    Tombstone remoteTombstone = remoteTomb.get(path);
+                    if (remoteTombstone != null) {
+                        boolean revived = localNow != null
+                                && localNow.getLastModified() > remoteTombstone.getDeletedAt();
+                        if (!revived) {
+                            continue;
+                        }
+                    }
                 }
                 FileMeta local = localMap.get(path);
                 FileMeta remote = remoteMap.get(path);

@@ -9,6 +9,7 @@ import com.filesync.desktop.net.DesktopPeerClient;
 import com.filesync.desktop.net.HttpFileServer;
 import com.filesync.desktop.sync.DirectoryWatcher;
 import com.filesync.desktop.sync.DirectoryWatchListener;
+import com.filesync.desktop.sync.WriteGuard;
 
 import javafx.application.Application;
 import javafx.application.Platform;
@@ -76,6 +77,12 @@ public class MainApp extends Application {
     private volatile File syncRoot;
     private volatile boolean syncRunning;
     private final AtomicLong lastSyncAt = new AtomicLong(0L);
+
+    /** 日志缓冲：后台线程写入缓冲，FX 线程按批刷新，避免逐行 runLater 卡住界面 */
+    private final StringBuilder logPending = new StringBuilder();
+    private boolean logFlushScheduled;
+    private static final int MAX_LOG_CHARS = 300_000;
+    private static final int KEEP_LOG_CHARS = 120_000;
 
     @Override
     public void start(Stage stage) {
@@ -307,6 +314,11 @@ public class MainApp extends Application {
 
                 @Override
                 public void onDeleted(String relPath) {
+                    // 同步引擎自己写盘（先 .part 再 rename）会触发删除事件，
+                    // 这类路径不记墓碑，否则下一轮会把刚收到的文件当删除处理
+                    if (WriteGuard.isGuarded(relPath)) {
+                        return;
+                    }
                     try {
                         if (engine != null) {
                             engine.recordLocalDelete(relPath);
@@ -382,6 +394,12 @@ public class MainApp extends Application {
 
             @Override
             public void onAction(String action, String relPath) {
+                // 引擎即将写盘，先登记保护，避免监听器把自己的写入记成删除
+                if (SyncEngine.ACTION_DOWNLOAD.equals(action)
+                        || SyncEngine.ACTION_DELETE_LOCAL.equals(action)
+                        || SyncEngine.ACTION_MKDIR.equals(action)) {
+                    WriteGuard.guard(relPath);
+                }
                 Platform.runLater(() -> log(action + "  " + relPath));
             }
 
@@ -420,12 +438,47 @@ public class MainApp extends Application {
     }
 
     private void log(String message) {
-        String line = LocalTime.now().withNano(0) + "  " + message;
-        if (Platform.isFxApplicationThread()) {
-            logArea.appendText(line + "\n");
-        } else {
-            Platform.runLater(() -> logArea.appendText(line + "\n"));
+        if (logArea == null) {
+            System.out.println(LocalTime.now().withNano(0) + "  " + message);
+            return;
         }
+        String line = LocalTime.now().withNano(0) + "  " + message;
+        synchronized (logPending) {
+            logPending.append(line).append('\n');
+        }
+        if (Platform.isFxApplicationThread()) {
+            flushLog();
+        } else if (!logFlushScheduled) {
+            logFlushScheduled = true;
+            Platform.runLater(this::flushLog);
+        }
+    }
+
+    /** 把缓冲里的日志一次性追加到日志框并滚到底部 */
+    private void flushLog() {
+        logFlushScheduled = false;
+        String chunk;
+        synchronized (logPending) {
+            if (logPending.length() == 0) {
+                return;
+            }
+            chunk = logPending.toString();
+            logPending.setLength(0);
+        }
+        if (logArea == null) {
+            return;
+        }
+        if (logArea.getLength() + chunk.length() > MAX_LOG_CHARS) {
+            int cut = Math.max(0, logArea.getLength() + chunk.length() - KEEP_LOG_CHARS);
+            if (cut < logArea.getLength()) {
+                logArea.deleteText(0, cut);
+            } else {
+                logArea.clear();
+            }
+        }
+        logArea.appendText(chunk);
+        logArea.setScrollTop(Double.MAX_VALUE);
+        logArea.positionCaret(logArea.getLength());
     }
 
     private void fatalError(String message, Exception e) {

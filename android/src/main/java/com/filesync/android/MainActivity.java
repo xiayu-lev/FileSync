@@ -1,9 +1,13 @@
 package com.filesync.android;
 
 import android.Manifest;
+import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
+import android.provider.Settings;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -13,8 +17,10 @@ import android.widget.ListView;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
@@ -22,7 +28,10 @@ import androidx.core.content.ContextCompat;
 import com.filesync.android.sync.SyncManager;
 import com.filesync.common.model.DeviceInfo;
 
+import java.io.File;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -31,18 +40,23 @@ import java.util.List;
 public class MainActivity extends AppCompatActivity implements SyncManager.StateListener {
 
     private static final int REQ_NOTIFICATION = 200;
+    private static final int REQ_STORAGE = 201;
 
     private TextView tvDir;
     private TextView tvLog;
     private TextView tvProgress;
     private ListView lvPeers;
     private Button btnSync;
+    private Button btnDir;
     private ProgressBar progressBar;
     private ScrollView logScroll;
 
     private SyncManager manager;
     private PeerAdapter peerAdapter;
     private final List<DeviceInfo> peers = new ArrayList<>();
+
+    /** 授权完成后自动继续打开目录选择器 */
+    private boolean pickDirAfterPermission;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -54,6 +68,7 @@ public class MainActivity extends AppCompatActivity implements SyncManager.State
         tvProgress = findViewById(R.id.tv_progress);
         lvPeers = findViewById(R.id.lv_peers);
         btnSync = findViewById(R.id.btn_sync);
+        btnDir = findViewById(R.id.btn_dir);
         progressBar = findViewById(R.id.progress);
         logScroll = findViewById(R.id.log_scroll);
 
@@ -62,6 +77,7 @@ public class MainActivity extends AppCompatActivity implements SyncManager.State
         lvPeers.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
 
         btnSync.setOnClickListener(v -> onSyncClicked());
+        btnDir.setOnClickListener(v -> onDirClicked());
 
         requestNotificationPermissionIfNeeded();
         bootstrap();
@@ -71,10 +87,11 @@ public class MainActivity extends AppCompatActivity implements SyncManager.State
         new Thread(() -> {
             try {
                 manager = SyncManager.getInstance(this);
+                manager.addStateListener(this);
                 if (manager.isStarted()) {
                     // 界面重建（例如从后台返回、配置变化）时不要重复初始化，避免重复监听端口
                     runOnUiThread(() -> {
-                        tvDir.setText(manager.getSyncRoot().getAbsolutePath());
+                        updateDirLabel();
                         appendLog("服务已在运行");
                         peers.clear();
                         peers.addAll(manager.getPeers());
@@ -83,10 +100,9 @@ public class MainActivity extends AppCompatActivity implements SyncManager.State
                     return;
                 }
                 manager.init();
-                manager.addStateListener(this);
                 manager.start();
                 runOnUiThread(() -> {
-                    tvDir.setText(manager.getSyncRoot().getAbsolutePath());
+                    updateDirLabel();
                     appendLog("服务初始化完成");
                 });
             } catch (Exception e) {
@@ -94,6 +110,12 @@ public class MainActivity extends AppCompatActivity implements SyncManager.State
                 runOnUiThread(() -> appendLog("初始化失败: " + e.getMessage()));
             }
         }, "fs-bootstrap").start();
+    }
+
+    private void updateDirLabel() {
+        if (manager != null && manager.getSyncRoot() != null) {
+            tvDir.setText(manager.getSyncRoot().getAbsolutePath());
+        }
     }
 
     private void onSyncClicked() {
@@ -108,6 +130,157 @@ public class MainActivity extends AppCompatActivity implements SyncManager.State
         }
         manager.syncWith(peers.get(pos));
     }
+
+    // ==================== 同步目录切换 ====================
+
+    private void onDirClicked() {
+        if (manager == null) {
+            Toast.makeText(this, "服务尚未就绪，请稍候", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (!hasStorageAccess()) {
+            pickDirAfterPermission = true;
+            showPermissionDialog();
+            return;
+        }
+        File start = manager.getSyncRoot();
+        if (start == null || !start.isDirectory()) {
+            start = Environment.getExternalStorageDirectory();
+        }
+        showDirPicker(start);
+    }
+
+    private boolean hasStorageAccess() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            return Environment.isExternalStorageManager();
+        }
+        return ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private void showPermissionDialog() {
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.perm_title)
+                .setMessage(R.string.perm_message)
+                .setPositiveButton(R.string.perm_go, (d, w) -> openAllFilesAccessSettings())
+                .setNegativeButton(R.string.perm_cancel, (d, w) -> pickDirAfterPermission = false)
+                .show();
+    }
+
+    private void openAllFilesAccessSettings() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                        Uri.parse("package:" + getPackageName()));
+                startActivity(intent);
+            } else {
+                ActivityCompat.requestPermissions(this, new String[]{
+                        Manifest.permission.READ_EXTERNAL_STORAGE,
+                        Manifest.permission.WRITE_EXTERNAL_STORAGE}, REQ_STORAGE);
+            }
+        } catch (Exception e) {
+            try {
+                startActivity(new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION));
+            } catch (Exception ignored) {
+                Toast.makeText(this, "请手动到 设置 → 应用管理 → FileSync 授权",
+                        Toast.LENGTH_LONG).show();
+            }
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
+                                           @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQ_STORAGE && pickDirAfterPermission && hasStorageAccess()) {
+            pickDirAfterPermission = false;
+            File start = manager != null && manager.getSyncRoot() != null
+                    ? manager.getSyncRoot() : Environment.getExternalStorageDirectory();
+            showDirPicker(start);
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (pickDirAfterPermission && hasStorageAccess()) {
+            pickDirAfterPermission = false;
+            File start = manager != null && manager.getSyncRoot() != null
+                    ? manager.getSyncRoot() : Environment.getExternalStorageDirectory();
+            showDirPicker(start);
+        }
+    }
+
+    /**
+     * 内置目录浏览器：逐级进入子目录，点“使用此目录”即切换。
+     */
+    private void showDirPicker(File dir) {
+        File arg = dir;
+        if (arg == null || !arg.isDirectory()) {
+            arg = Environment.getExternalStorageDirectory();
+        }
+        final File current = arg;
+        File[] raw = current.listFiles(File::isDirectory);
+        List<File> dirs = new ArrayList<>();
+        if (raw != null) {
+            Arrays.sort(raw, Comparator.comparing(File::getName, String.CASE_INSENSITIVE_ORDER));
+            dirs.addAll(Arrays.asList(raw));
+        }
+
+        boolean hasParent = current.getParentFile() != null;
+        String[] items;
+        List<Object> targets = new ArrayList<>();
+        if (hasParent) {
+            items = new String[dirs.size() + 1];
+            items[0] = getString(R.string.dir_picker_parent);
+            targets.add(current.getParentFile());
+            for (int i = 0; i < dirs.size(); i++) {
+                items[i + 1] = dirs.get(i).getName() + "/";
+                targets.add(dirs.get(i));
+            }
+        } else {
+            items = new String[dirs.size()];
+            for (int i = 0; i < dirs.size(); i++) {
+                items[i] = dirs.get(i).getName() + "/";
+                targets.add(dirs.get(i));
+            }
+        }
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(this)
+                .setTitle(getString(R.string.dir_picker_title) + "\n" + current.getAbsolutePath())
+                .setPositiveButton(R.string.dir_picker_use, (d, w) -> applySyncDir(current))
+                .setNegativeButton(android.R.string.cancel, null);
+        if (items.length == 0) {
+            builder.setMessage("该目录下没有子目录，可直接使用此目录");
+        } else {
+            builder.setItems(items, (d, which) -> showDirPicker((File) targets.get(which)));
+        }
+        builder.show();
+    }
+
+    private void applySyncDir(File dir) {
+        appendLog("切换到目录: " + dir.getAbsolutePath());
+        new Thread(() -> {
+            try {
+                manager.switchRoot(dir);
+                runOnUiThread(() -> {
+                    updateDirLabel();
+                    peers.clear();
+                    peers.addAll(manager.getPeers());
+                    peerAdapter.notifyDataSetChanged();
+                    Toast.makeText(this, "同步目录已切换", Toast.LENGTH_SHORT).show();
+                });
+            } catch (Exception e) {
+                android.util.Log.e("FileSync", "切换目录失败", e);
+                runOnUiThread(() -> {
+                    appendLog("切换目录失败: " + e.getMessage());
+                    Toast.makeText(this, "切换失败: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                });
+            }
+        }, "fs-switch-dir").start();
+    }
+
+    // ==================== 状态回调 ====================
 
     @Override
     public void onPeersChanged(List<DeviceInfo> updated) {

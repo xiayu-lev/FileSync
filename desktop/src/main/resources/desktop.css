@@ -104,6 +104,13 @@
     -fx-background-color: #1f2d3d;
     -fx-border-radius: 6;
     -fx-background-radius: 6;
+    /* TextArea 的正文颜色取 -fx-text-fill，不是 .text 的 -fx-fill；
+       不显式指定会继承默认的深色文字，在深色底上完全看不清 */
+    -fx-text-fill: #e8f0f8;
+    -fx-highlight-fill: #0f9d8f;
+    -fx-highlight-text-fill: #ffffff;
+    -fx-font-family: "Consolas", "Microsoft YaHei UI", monospace;
+    -fx-font-size: 12px;
 }
 
 .text-area .content {
@@ -111,7 +118,7 @@
 }
 
 .text-area .text {
-    -fx-fill: #d6e0ea;
+    -fx-fill: #e8f0f8;
     -fx-font-family: "Consolas", "Microsoft YaHei UI", monospace;
     -fx-font-size: 12px;
 }

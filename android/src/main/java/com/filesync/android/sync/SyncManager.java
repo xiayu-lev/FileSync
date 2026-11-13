@@ -35,6 +35,7 @@ public class SyncManager {
     private static final int MAX_PORT_TRIES = 20;
     private static final String PREFS_NAME = "filesync_prefs";
     private static final String KEY_DEVICE_ID = "device_id";
+    private static final String KEY_SYNC_DIR = "sync_dir";
 
     private static volatile SyncManager instance;
 
@@ -55,6 +56,7 @@ public class SyncManager {
     private File syncRoot;
     private volatile boolean started;
     private volatile boolean syncRunning;
+    private volatile int lastNotifiedPercent = -1;
 
     private SyncManager(Context context) {
         this.appContext = context.getApplicationContext();
@@ -72,21 +74,12 @@ public class SyncManager {
     }
 
     public synchronized void init() throws Exception {
-        File external = appContext.getExternalFilesDir(null);
-        if (external == null) {
-            throw new IllegalStateException("外部存储不可用");
-        }
-        syncRoot = new File(external, "Sync");
-        if (!syncRoot.exists() && !syncRoot.mkdirs()) {
-            throw new IllegalStateException("无法创建同步目录");
-        }
+        syncRoot = resolveSyncRoot();
 
-        String deviceId = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                .getString(KEY_DEVICE_ID, null);
+        String deviceId = prefs().getString(KEY_DEVICE_ID, null);
         if (deviceId == null) {
             deviceId = java.util.UUID.randomUUID().toString();
-            appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                    .edit().putString(KEY_DEVICE_ID, deviceId).apply();
+            prefs().edit().putString(KEY_DEVICE_ID, deviceId).apply();
         }
         String deviceName = Build.MODEL + "的手机";
         self = new DeviceInfo(deviceId, deviceName, DeviceInfo.TYPE_ANDROID,
@@ -108,6 +101,12 @@ public class SyncManager {
 
             @Override
             public void onAction(String action, String relPath) {
+                // 引擎写盘前先登记保护，避免 FileObserver 把自己的写入记成删除
+                if (SyncEngine.ACTION_DOWNLOAD.equals(action)
+                        || SyncEngine.ACTION_DELETE_LOCAL.equals(action)
+                        || SyncEngine.ACTION_MKDIR.equals(action)) {
+                    WriteGuard.guard(relPath);
+                }
                 postLog(action + "  " + relPath);
             }
 
@@ -118,6 +117,16 @@ public class SyncManager {
                         l.onProgress(relPath, transferred, total);
                     }
                 });
+                if (total > 0) {
+                    int percent = (int) Math.min(100, (transferred * 100) / total);
+                    if (percent - lastNotifiedPercent >= 10) {
+                        lastNotifiedPercent = percent;
+                        SyncForegroundService.updateProgress(appContext,
+                                appContext.getString(com.filesync.android.R.string
+                                        .sync_notification_syncing)
+                                        + " " + percent + "%", percent);
+                    }
+                }
             }
 
             @Override
@@ -190,6 +199,8 @@ public class SyncManager {
         fileObserver.startWatching();
         started = true;
         postLog("本机服务已启动，同步目录: " + syncRoot.getAbsolutePath());
+        SyncForegroundService.updateState(appContext,
+                "运行中 · " + syncRoot.getName() + " · 端口 " + self.getHttpPort());
     }
 
     public synchronized void stop() {
@@ -218,7 +229,10 @@ public class SyncManager {
             return;
         }
         syncRunning = true;
+        lastNotifiedPercent = -1;
         notifySyncState(true);
+        SyncForegroundService.updateProgress(appContext,
+                appContext.getString(com.filesync.android.R.string.sync_notification_syncing), 0);
 
         syncExecutor.submit(() -> {
             AndroidPeerClient client = new AndroidPeerClient(peer, okHttpClient);
@@ -229,17 +243,89 @@ public class SyncManager {
             } finally {
                 client.close();
                 syncRunning = false;
+                lastNotifiedPercent = -1;
+                SyncForegroundService.updateState(appContext,
+                        "运行中 · 与 " + peer.getDeviceName() + " 同步完成");
                 mainHandler.post(() -> notifySyncState(false));
             }
         });
     }
 
     public void addStateListener(StateListener listener) {
-        stateListeners.add(listener);
+        if (!stateListeners.contains(listener)) {
+            stateListeners.add(listener);
+        }
     }
 
     public void removeStateListener(StateListener listener) {
         stateListeners.remove(listener);
+    }
+
+    /**
+     * 切换同步目录：停掉监听/服务端 → 重新初始化 → 重新启动。
+     * 目录必须可写，否则抛异常交给 UI 提示。
+     */
+    public synchronized void switchRoot(File newRoot) throws Exception {
+        if (newRoot == null) {
+            throw new IllegalArgumentException("目录为空");
+        }
+        File target = newRoot.getAbsoluteFile();
+        if (!target.exists() && !target.mkdirs()) {
+            throw new IllegalStateException("无法创建同步目录: " + target.getAbsolutePath());
+        }
+        if (!target.isDirectory()) {
+            throw new IllegalStateException("不是有效目录: " + target.getAbsolutePath());
+        }
+        if (!target.canWrite()) {
+            throw new IllegalStateException("目录不可写: " + target.getAbsolutePath());
+        }
+        boolean wasStarted = started;
+        if (wasStarted) {
+            stop();
+        }
+        prefs().edit().putString(KEY_SYNC_DIR, target.getAbsolutePath()).apply();
+        syncRoot = target;
+        init();
+        start();
+        postLog("同步目录已切换: " + target.getAbsolutePath());
+    }
+
+    /**
+     * 恢复上次使用的目录；没有记录或不可用时回退到应用专属目录。
+     */
+    private File resolveSyncRoot() throws Exception {
+        String saved = prefs().getString(KEY_SYNC_DIR, null);
+        File dir = null;
+        if (saved != null && !saved.trim().isEmpty()) {
+            dir = new File(saved.trim());
+        }
+        if (dir == null || (!dir.isDirectory() && !dir.mkdirs())) {
+            File external = appContext.getExternalFilesDir(null);
+            if (external == null) {
+                throw new IllegalStateException("外部存储不可用");
+            }
+            dir = new File(external, "Sync");
+            if (!dir.exists() && !dir.mkdirs()) {
+                throw new IllegalStateException("无法创建同步目录");
+            }
+        }
+        if (!dir.canWrite()) {
+            // 记录目录已失效（例如被删除或权限被撤销），退回默认目录
+            File external = appContext.getExternalFilesDir(null);
+            if (external != null) {
+                File fallback = new File(external, "Sync");
+                if (fallback.exists() || fallback.mkdirs()) {
+                    prefs().edit().putString(KEY_SYNC_DIR, fallback.getAbsolutePath()).apply();
+                    return fallback;
+                }
+            }
+            throw new IllegalStateException("同步目录不可写: " + dir.getAbsolutePath());
+        }
+        return dir;
+    }
+
+    private android.content.SharedPreferences prefs() {
+        return appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
     }
 
     public List<DeviceInfo> getPeers() {

@@ -1,0 +1,14 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108"
+    android:tint="#FFFFFF">
+    <!-- 状态栏单色图标：双向同步箭头（系统只取 alpha 通道，颜色由通知栏决定） -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M32,44 h34 l-9,-9 l6,-6 l19,19 l-19,19 l-6,-6 l9,-9 h-34 z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M76,64 h-34 l9,9 l-6,6 l-19,-19 l19,-19 l6,6 l-9,9 h34 z" />
+</vector>
