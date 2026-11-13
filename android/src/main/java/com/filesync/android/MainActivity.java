@@ -3,6 +3,7 @@ package com.filesync.android;
 import android.Manifest;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -11,6 +12,7 @@ import android.provider.Settings;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.Window;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.ListView;
@@ -24,6 +26,11 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 
 import com.filesync.android.sync.SyncManager;
 import com.filesync.common.model.DeviceInfo;
@@ -46,6 +53,9 @@ public class MainActivity extends AppCompatActivity implements SyncManager.State
     private TextView tvLog;
     private TextView tvProgress;
     private TextView tvSelected;
+    private TextView tvStatus;
+    private TextView tvPeerCount;
+    private TextView tvPeersEmpty;
     private ListView lvPeers;
     private Button btnSync;
     private Button btnDir;
@@ -67,17 +77,27 @@ public class MainActivity extends AppCompatActivity implements SyncManager.State
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        applyEdgeToEdge();
 
         tvDir = findViewById(R.id.tv_dir);
         tvLog = findViewById(R.id.tv_log);
         tvProgress = findViewById(R.id.tv_progress);
         tvSelected = findViewById(R.id.tv_selected);
+        tvStatus = findViewById(R.id.tv_status);
+        tvPeerCount = findViewById(R.id.tv_peer_count);
+        tvPeersEmpty = findViewById(R.id.tv_peers_empty);
         lvPeers = findViewById(R.id.lv_peers);
         btnSync = findViewById(R.id.btn_sync);
         btnDir = findViewById(R.id.btn_dir);
         btnRefresh = findViewById(R.id.btn_refresh);
         progressBar = findViewById(R.id.progress);
         logScroll = findViewById(R.id.log_scroll);
+
+        // AppCompat 默认给 Button 叠加 colorPrimary 的背景着色，会把自绘渐变/描边整块覆盖，
+        // 这里清掉着色列表，保证自绘背景按设计显示
+        ViewCompat.setBackgroundTintList(btnDir, null);
+        ViewCompat.setBackgroundTintList(btnRefresh, null);
+        ViewCompat.setBackgroundTintList(btnSync, null);
 
         peerAdapter = new PeerAdapter();
         lvPeers.setAdapter(peerAdapter);
@@ -101,6 +121,54 @@ public class MainActivity extends AppCompatActivity implements SyncManager.State
         bootstrap();
     }
 
+    /**
+     * 状态栏 / 导航栏透明：内容延伸到系统栏下方，顶部渐变头图铺满状态栏，
+     * 底部按导航栏高度补内边距，避免日志被系统手势条压住。
+     */
+    private void applyEdgeToEdge() {
+        Window window = getWindow();
+        window.setStatusBarColor(Color.TRANSPARENT);
+        window.setNavigationBarColor(Color.TRANSPARENT);
+        WindowCompat.setDecorFitsSystemWindows(window, false);
+
+        WindowInsetsControllerCompat controller =
+                WindowCompat.getInsetsController(window, window.getDecorView());
+        // 状态栏压在深色渐变上，用白色图标；底部是浅色背景，用深色导航图标
+        controller.setAppearanceLightStatusBars(false);
+        controller.setAppearanceLightNavigationBars(true);
+
+        View root = findViewById(R.id.root);
+        View header = findViewById(R.id.header);
+        final int headerBaseTop = header.getPaddingTop();
+        final int rootBaseBottom = root.getPaddingBottom();
+        ViewCompat.setOnApplyWindowInsetsListener(root, (v, insets) -> {
+            Insets bars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
+            header.setPadding(header.getPaddingLeft(), headerBaseTop + bars.top,
+                    header.getPaddingRight(), header.getPaddingBottom());
+            v.setPadding(v.getPaddingLeft(), v.getPaddingTop(), v.getPaddingRight(),
+                    rootBaseBottom + bars.bottom);
+            return insets;
+        });
+        ViewCompat.requestApplyInsets(root);
+    }
+
+    private void updatePeerCount() {
+        if (tvPeerCount != null) {
+            tvPeerCount.setText(peers.isEmpty() ? "暂无设备" : peers.size() + " 台");
+        }
+        if (tvPeersEmpty != null) {
+            tvPeersEmpty.setVisibility(peers.isEmpty() ? View.VISIBLE : View.GONE);
+        }
+        // 设备少时收紧列表高度，避免卡片里留一大块空白；超过 2 台固定两行高度并内部滚动
+        View frame = findViewById(R.id.list_frame);
+        if (frame != null) {
+            int rows = peers.isEmpty() ? 0 : Math.min(peers.size(), 2);
+            int heightDp = peers.isEmpty() ? 104 : rows * 62 + (rows - 1) * 6 + 4;
+            frame.getLayoutParams().height = (int) (heightDp * getResources().getDisplayMetrics().density);
+            frame.requestLayout();
+        }
+    }
+
     private void bootstrap() {
         new Thread(() -> {
             try {
@@ -114,6 +182,7 @@ public class MainActivity extends AppCompatActivity implements SyncManager.State
                         peers.clear();
                         peers.addAll(manager.getPeers());
                         peerAdapter.notifyDataSetChanged();
+                        updatePeerCount();
                         restoreSelection();
                     });
                     return;
@@ -333,6 +402,7 @@ public class MainActivity extends AppCompatActivity implements SyncManager.State
                     peers.clear();
                     peers.addAll(manager.getPeers());
                     peerAdapter.notifyDataSetChanged();
+                    updatePeerCount();
                     restoreSelection();
                     Toast.makeText(this, "同步目录已切换", Toast.LENGTH_SHORT).show();
                 });
@@ -353,6 +423,7 @@ public class MainActivity extends AppCompatActivity implements SyncManager.State
         peers.clear();
         peers.addAll(updated);
         peerAdapter.notifyDataSetChanged();
+        updatePeerCount();
         // 设备上下线导致列表重建时，保持原来选中的设备（按设备 ID 还原）
         restoreSelection();
     }
@@ -377,6 +448,9 @@ public class MainActivity extends AppCompatActivity implements SyncManager.State
     public void onSyncStateChanged(boolean running) {
         btnSync.setEnabled(!running);
         btnSync.setText(running ? "同步中..." : "立即同步");
+        if (tvStatus != null) {
+            tvStatus.setText(running ? "同步中" : "运行中");
+        }
         if (!running) {
             progressBar.setProgress(0);
             tvProgress.setText("空闲");

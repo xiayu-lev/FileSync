@@ -1,146 +1,307 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="16dp">
+    android:background="@color/bg_app"
+    android:orientation="vertical">
 
+    <!-- 顶部渐变头图：延伸到状态栏下方 -->
+    <LinearLayout
+        android:id="@+id/header"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@drawable/bg_header"
+        android:orientation="vertical"
+        android:paddingStart="20dp"
+        android:paddingTop="14dp"
+        android:paddingEnd="20dp"
+        android:paddingBottom="20dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:letterSpacing="0.02"
+                android:text="FileSync"
+                android:textColor="#FFFFFF"
+                android:textSize="22sp"
+                android:textStyle="bold" />
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_pill_ghost"
+                android:backgroundTint="@null"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="11dp"
+                android:paddingTop="5dp"
+                android:paddingEnd="12dp"
+                android:paddingBottom="5dp">
+
+                <View
+                    android:layout_width="7dp"
+                    android:layout_height="7dp"
+                    android:background="@drawable/bg_status_dot" />
+
+                <TextView
+                    android:id="@+id/tv_status"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:text="运行中"
+                    android:textColor="#FFFFFF"
+                    android:textSize="11sp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:letterSpacing="0.06"
+            android:text="局域网 · 双向文件同步"
+            android:textColor="#B8FFFFFF"
+            android:textSize="11sp" />
+
+        <TextView
+            android:id="@+id/tv_dir"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:ellipsize="middle"
+            android:lineSpacingExtra="2dp"
+            android:maxLines="2"
+            android:text="初始化中..."
+            android:textColor="#DEFFFFFF"
+            android:textSize="12sp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/btn_dir"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:background="@drawable/bg_pill_ghost"
+                android:backgroundTint="@null"
+                android:minWidth="0dp"
+                android:paddingStart="18dp"
+                android:paddingEnd="18dp"
+                android:stateListAnimator="@null"
+                android:text="切换目录"
+                android:textAllCaps="false"
+                android:textColor="#FFFFFF"
+                android:textSize="12sp" />
+
+            <Button
+                android:id="@+id/btn_refresh"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:layout_marginStart="10dp"
+                android:background="@drawable/bg_pill_ghost"
+                android:backgroundTint="@null"
+                android:minWidth="0dp"
+                android:paddingStart="18dp"
+                android:paddingEnd="18dp"
+                android:stateListAnimator="@null"
+                android:text="刷新设备"
+                android:textAllCaps="false"
+                android:textColor="#FFFFFF"
+                android:textSize="12sp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- 设备卡片 -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:gravity="center_vertical"
-        android:orientation="horizontal">
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="14dp"
+        android:layout_marginEnd="16dp"
+        android:background="@drawable/bg_card"
+        android:elevation="2dp"
+        android:orientation="vertical"
+        android:paddingStart="14dp"
+        android:paddingTop="12dp"
+        android:paddingEnd="14dp"
+        android:paddingBottom="12dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="局域网设备"
+                android:textColor="@color/text_primary"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tv_peer_count"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="0 台"
+                android:textColor="@color/text_secondary"
+                android:textSize="11sp" />
+        </LinearLayout>
+
+        <FrameLayout
+            android:id="@+id/list_frame"
+            android:layout_width="match_parent"
+            android:layout_height="128dp"
+            android:layout_marginTop="8dp">
+
+            <ListView
+                android:id="@+id/lv_peers"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@android:color/transparent"
+                android:choiceMode="singleChoice"
+                android:divider="@android:color/transparent"
+                android:dividerHeight="6dp"
+                android:listSelector="@android:color/transparent"
+                android:scrollbars="none" />
+
+            <TextView
+                android:id="@+id/tv_peers_empty"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:lineSpacingExtra="3dp"
+                android:text="正在搜索同一局域网内的设备…\n电脑端打开 FileSync 后会自动出现在这里"
+                android:textColor="#9AAAA2"
+                android:textSize="12sp" />
+        </FrameLayout>
 
         <TextView
-            android:layout_width="0dp"
+            android:id="@+id/tv_selected"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="同步目录"
-            android:textColor="#1f2d3d"
+            android:layout_marginTop="6dp"
+            android:background="@drawable/bg_chip"
+            android:lineSpacingExtra="2dp"
+            android:paddingStart="10dp"
+            android:paddingTop="8dp"
+            android:paddingEnd="10dp"
+            android:paddingBottom="8dp"
+            android:text="当前选中：未选择（点击列表中的设备）"
+            android:textColor="#0A756C"
+            android:textSize="12sp"
             android:textStyle="bold" />
-
-        <Button
-            android:id="@+id/btn_dir"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:minWidth="0dp"
-            android:paddingLeft="14dp"
-            android:paddingRight="14dp"
-            android:backgroundTint="#E8F1F0"
-            android:text="切换目录"
-            android:textColor="#0F7F75"
-            android:textSize="13sp" />
     </LinearLayout>
 
-    <TextView
-        android:id="@+id/tv_dir"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:text="初始化中..."
-        android:textColor="#5c6b7a"
-        android:textSize="12sp" />
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:gravity="center_vertical"
-        android:orientation="horizontal">
-
-        <TextView
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="局域网在线设备（需连接同一 WiFi）"
-            android:textColor="#1f2d3d"
-            android:textStyle="bold" />
-
-        <Button
-            android:id="@+id/btn_refresh"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:minWidth="0dp"
-            android:paddingLeft="14dp"
-            android:paddingRight="14dp"
-            android:backgroundTint="#E8F1F0"
-            android:text="刷新"
-            android:textColor="#0F7F75"
-            android:textSize="13sp" />
-    </LinearLayout>
-
-    <ListView
-        android:id="@+id/lv_peers"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="2"
-        android:layout_marginTop="6dp"
-        android:background="#f5f7fa"
-        android:choiceMode="singleChoice"
-        android:listSelector="#CCE7E4"
-        android:minHeight="160dp" />
-
-    <TextView
-        android:id="@+id/tv_selected"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
-        android:background="#EAF6F4"
-        android:padding="6dp"
-        android:text="当前选中：未选择"
-        android:textColor="#0c6b63"
-        android:textSize="12sp"
-        android:textStyle="bold" />
-
+    <!-- 同步按钮 -->
     <Button
         android:id="@+id/btn_sync"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"
-        android:backgroundTint="#0F9D8F"
+        android:layout_height="52dp"
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="14dp"
+        android:layout_marginEnd="16dp"
+        android:background="@drawable/bg_btn_primary"
+        android:backgroundTint="@null"
+        android:elevation="4dp"
+        android:letterSpacing="0.06"
+        android:stateListAnimator="@null"
         android:text="立即同步"
-        android:textColor="#ffffff" />
+        android:textAllCaps="false"
+        android:textColor="#FFFFFF"
+        android:textSize="16sp"
+        android:textStyle="bold" />
 
+    <!-- 进度 -->
     <ProgressBar
         android:id="@+id/progress"
         style="?android:attr/progressBarStyleHorizontal"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"
-        android:max="100" />
+        android:layout_height="8dp"
+        android:layout_marginStart="18dp"
+        android:layout_marginTop="16dp"
+        android:layout_marginEnd="18dp"
+        android:max="100"
+        android:maxHeight="8dp"
+        android:minHeight="8dp"
+        android:progressDrawable="@drawable/bg_progress" />
 
     <TextView
         android:id="@+id/tv_progress"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_marginStart="18dp"
+        android:layout_marginTop="6dp"
+        android:layout_marginEnd="18dp"
+        android:ellipsize="end"
+        android:maxLines="1"
         android:text="空闲"
-        android:textColor="#5c6b7a"
-        android:textSize="12sp" />
+        android:textColor="@color/text_secondary"
+        android:textSize="11sp" />
 
-    <TextView
-        android:layout_width="wrap_content"
+    <!-- 日志 -->
+    <LinearLayout
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"
-        android:text="同步日志"
-        android:textStyle="bold"
-        android:textColor="#1f2d3d" />
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="16dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="8dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="同步日志"
+            android:textColor="@color/text_primary"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:letterSpacing="0.1"
+            android:text="实时"
+            android:textColor="#9AAAA2"
+            android:textSize="10sp" />
+    </LinearLayout>
 
     <ScrollView
         android:id="@+id/log_scroll"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_marginTop="6dp"
-        android:layout_weight="2"
-        android:background="#1f2d3d"
-        android:minHeight="140dp">
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="16dp"
+        android:layout_weight="1"
+        android:background="@drawable/bg_log"
+        android:fillViewport="true"
+        android:minHeight="120dp"
+        android:scrollbars="none">
 
         <TextView
             android:id="@+id/tv_log"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:fontFamily="monospace"
-            android:padding="8dp"
-            android:textColor="#d6e0ea"
+            android:lineSpacingExtra="4dp"
+            android:padding="14dp"
+            android:textColor="#D7E6E3"
             android:textSize="12sp" />
     </ScrollView>
 </LinearLayout>
