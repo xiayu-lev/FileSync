@@ -184,7 +184,7 @@ jpackage --type exe --name FileSync --app-version 1.0.7 `
   --input desktop\build\install\desktop\lib `
   --main-jar desktop-1.0.1.jar --main-class com.filesync.desktop.Launcher `
   --icon desktop\packaging\fileSync.ico --dest dist `
-  --win-per-user-install --win-menu --win-shortcut --win-dir-chooser
+  --win-per-user-install --win-menu --win-menu-group "FileSync" --win-shortcut --win-dir-chooser
 ```
 
 > 入口类必须是 `com.filesync.desktop.Launcher`，不能用 `MainApp`：Java 启动器对直接
