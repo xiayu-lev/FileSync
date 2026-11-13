@@ -188,6 +188,7 @@ gradlew.bat build -x test
 | 另一端不知道这一端在同步什么 | 同步事件只回调本端界面 | 新增 `POST /api/log`，发起端把每条日志实时推给对端，对端日志区显示 `[来自 设备名] …` |
 | 新设备上线要等一个广播周期才出现 | 发现只有周期性广播，无手动触发 | 两端新增「刷新」按钮 → `requestAnnounce()` 立即补广播一次 |
 | 列表刷新后看不清当前选中哪台 | 选中状态在列表重建时丢失，界面也没有显式提示 | 两端按设备 ID 保持选中，并增加「当前选中」提示条（手机列表项带选中底色） |
+| 手机端一发起同步就失败：`CLEARTEXT communication … not permitted by network security policy` | Android 9+ 默认禁止明文 HTTP，服务端是纯 HTTP，而 manifest 未声明允许明文 | `<application>` 增加 `android:usesCleartextTraffic="true"`（1.0.3）。实测手机发起同步「同步完成，变更 2 项」，电脑端同秒弹出 `[来自 24129PN74C的手机]` 四条日志 |
 
 实测结果（电脑 ↔ 小米 15，经真实网络地址而非 adb 端口转发）：
 
@@ -221,4 +222,5 @@ gradlew.bat build -x test
 ## 十、版本
 
 - protocolVersion：1
-- 版本：1.0.2
+- 版本：1.0.3（Android 端修复明文 HTTP 被系统拦截导致的「手机同步一直失败」）
+- 上一版：1.0.2（跨端日志实时互推、两端刷新按钮、选中设备保持）
