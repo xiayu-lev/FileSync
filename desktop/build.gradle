@@ -18,5 +18,7 @@ dependencies {
 }
 
 application {
-    mainClass = 'com.filesync.desktop.MainApp'
+    // 用 Launcher 而不是 MainApp：jpackage 打包后 JavaFX 走 classpath 分发，
+    // 直接以 Application 子类作为 main class 会被启动器拒绝。
+    mainClass = 'com.filesync.desktop.Launcher'
 }

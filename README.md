@@ -164,6 +164,36 @@ sdk.dir=C\:/path/to/Android/Sdk
 gradlew.bat build -x test
 ```
 
+### 桌面端打包 Windows exe（jpackage）
+
+需要 JDK 21 自带的 `jpackage`，生成安装包（`--type exe`）时还需要 WiX Toolset v3
+的 `candle.exe` / `light.exe` 在 PATH 上（`--type app-image` 不需要 WiX）。
+
+```powershell
+# 1. 准备运行时依赖（common + gson + JavaFX win 版 jar）
+gradlew.bat :desktop:installDist
+
+# 2. 免安装版：产出 FileSync\FileSync.exe + 内置 runtime
+jpackage --type app-image --name FileSync --app-version 1.0.7 `
+  --input desktop\build\install\desktop\lib `
+  --main-jar desktop-1.0.1.jar --main-class com.filesync.desktop.Launcher `
+  --icon desktop\packaging\fileSync.ico --dest dist
+
+# 3. 安装包：单个 exe，带安装向导、开始菜单与桌面快捷方式（按用户安装，免管理员）
+jpackage --type exe --name FileSync --app-version 1.0.7 `
+  --input desktop\build\install\desktop\lib `
+  --main-jar desktop-1.0.1.jar --main-class com.filesync.desktop.Launcher `
+  --icon desktop\packaging\fileSync.ico --dest dist `
+  --win-per-user-install --win-menu --win-shortcut --win-dir-chooser
+```
+
+> 入口类必须是 `com.filesync.desktop.Launcher`，不能用 `MainApp`：Java 启动器对直接
+> 继承 `Application` 的 main class 会强制检查 `javafx.graphics` 模块，classpath 分发
+> 的 JavaFX 会被判为“缺少 JavaFX 运行时组件”。
+
+产物：`dist\FileSync-1.0.7.exe`（安装包，约 63 MB）、`dist\FileSync\`（免安装目录，
+可整体压缩成 zip，约 159 MB 展开 / 60 MB 压缩）。
+
 ---
 
 ## 八、真机联调记录（小米 15 / MIUI，Android 14）
@@ -226,6 +256,7 @@ gradlew.bat build -x test
 
 - protocolVersion：1
 - 版本：1.0.7（手机端界面重做：状态栏/导航栏透明、渐变色头图、圆角卡片与选中高亮）
+- 版本：1.0.7 桌面端打包（jpackage：`FileSync-1.0.7.exe` 安装包 + 免安装便携版，内置 JRE 21 与 JavaFX 21，无需本机装 JDK）
 - 版本：1.0.6（同步完成日志改为两行：`===== 同步完成 =====` + 「新增 X 项 · 删除 Z 项 · 共 N 项」，窄屏不折行）
 - 上一版：1.0.5（完成日志按「新增 / 更新 / 删除」分类计数，不再只有总数）
 - 上一版：1.0.4（同步不再往用户目录塞多余文件夹/文档：跳过隐藏条目，状态目录移出同步根）
