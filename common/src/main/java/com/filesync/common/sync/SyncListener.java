@@ -13,7 +13,7 @@ public interface SyncListener {
 
     void onActionDone(String action, String relPath);
 
-    void onComplete(int changedCount);
+    void onComplete(SyncSummary summary);
 
     void onError(String relPath, Exception error);
 }

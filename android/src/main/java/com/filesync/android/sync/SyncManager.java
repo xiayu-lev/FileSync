@@ -14,6 +14,7 @@ import com.filesync.common.discovery.DiscoveryListener;
 import com.filesync.common.model.DeviceInfo;
 import com.filesync.common.sync.SyncEngine;
 import com.filesync.common.sync.SyncListener;
+import com.filesync.common.sync.SyncSummary;
 import com.filesync.android.net.AndroidHttpServer;
 import com.filesync.android.net.AndroidPeerClient;
 
@@ -135,8 +136,8 @@ public class SyncManager {
             }
 
             @Override
-            public void onComplete(int changedCount) {
-                postLog("===== 同步完成，变更 " + changedCount + " 项 =====");
+            public void onComplete(SyncSummary summary) {
+                postLog(summary.describe());
             }
 
             @Override

@@ -48,6 +48,9 @@ public class SyncEngine {
     private volatile SyncListener listener;
     private volatile boolean cancelled;
 
+    /** 当前这轮同步的变更分类统计 */
+    private SyncSummary summary = new SyncSummary();
+
     public SyncEngine(File syncRoot, DeviceInfo self) throws IOException {
         this(syncRoot, self, syncRoot);
     }
@@ -125,6 +128,7 @@ public class SyncEngine {
     public int runOnce(RemotePeerClient peer) throws IOException {
         this.client = peer;
         this.cancelled = false;
+        this.summary = new SyncSummary();
         int changed = 0;
         SyncListener l = listener;
         if (l != null) {
@@ -147,9 +151,7 @@ public class SyncEngine {
                 FileMeta local = localMap.get(t.getPath());
                 if (local != null && !remoteMap.containsKey(t.getPath())
                         && local.getLastModified() <= t.getDeletedAt()) {
-                    if (deleteLocal(t.getPath())) {
-                        changed++;
-                    }
+                    deleteLocal(t.getPath());
                 }
             }
 
@@ -170,11 +172,13 @@ public class SyncEngine {
                         fireAction(ACTION_DELETE_REMOTE, t.getPath());
                         peer.deleteFile(t.getPath());
                         fireActionDone(ACTION_DELETE_REMOTE, t.getPath());
+                        summary.countDeleted();
                         changed++;
                     } catch (Exception e) {
                         // 对端文件已不存在（404）说明删除目标已达成，不算失败
                         if (String.valueOf(e.getMessage()).contains("404")) {
                             fireActionDone(ACTION_DELETE_REMOTE, t.getPath());
+                            summary.countDeleted();
                             changed++;
                         } else {
                             fireError(t.getPath(), e);
@@ -222,10 +226,10 @@ public class SyncEngine {
                 FileMeta remote = remoteMap.get(path);
                 try {
                     if (local == null && remote != null) {
-                        receive(path, remote);
+                        receive(path, remote, true);
                         changed++;
                     } else if (local != null && remote == null) {
-                        send(path, local);
+                        send(path, local, true);
                         changed++;
                     } else if (local != null && metaDiffer(local, remote)) {
                         if (resolveConflict(path, local, remote)) {
@@ -241,10 +245,11 @@ public class SyncEngine {
             tombstoneStore.save();
             return changed;
         } finally {
+            SyncSummary done = summary;
             if (l != null) {
-                l.onComplete(changed);
+                l.onComplete(done);
             }
-            relayLine("===== 同步完成，变更 " + changed + " 项 =====");
+            relayLine(done.describe());
         }
     }
 
@@ -253,7 +258,7 @@ public class SyncEngine {
         tombstoneStore.add(relPath);
     }
 
-    private void receive(String path, FileMeta remote) throws IOException {
+    private void receive(String path, FileMeta remote, boolean isNew) throws IOException {
         File target = PathUtils.resolveSafe(syncRoot, path);
         if (remote.isDirectory()) {
             fireAction(ACTION_MKDIR, path);
@@ -261,6 +266,7 @@ public class SyncEngine {
                 throw new IOException("无法创建目录: " + path);
             }
             fireActionDone(ACTION_MKDIR, path);
+            summary.countDirectory();
             return;
         }
         File parent = target.getParentFile();
@@ -270,19 +276,30 @@ public class SyncEngine {
         fireAction(ACTION_DOWNLOAD, path);
         client.downloadFile(path, target, remote.getLastModified(), progressFor(path));
         fireActionDone(ACTION_DOWNLOAD, path);
+        if (isNew) {
+            summary.countAdded();
+        } else {
+            summary.countUpdated();
+        }
     }
 
-    private void send(String path, FileMeta local) throws IOException {
+    private void send(String path, FileMeta local, boolean isNew) throws IOException {
         File source = PathUtils.resolveSafe(syncRoot, path);
         if (local.isDirectory()) {
             fireAction(ACTION_MKDIR, path);
             client.makeDirectory(path);
             fireActionDone(ACTION_MKDIR, path);
+            summary.countDirectory();
             return;
         }
         fireAction(ACTION_UPLOAD, path);
         client.uploadFile(source, path, progressFor(path));
         fireActionDone(ACTION_UPLOAD, path);
+        if (isNew) {
+            summary.countAdded();
+        } else {
+            summary.countUpdated();
+        }
     }
 
     private boolean resolveConflict(String path, FileMeta local, FileMeta remote) throws IOException {
@@ -300,9 +317,9 @@ public class SyncEngine {
             return true;
         }
         if (lm > rm) {
-            send(path, local);
+            send(path, local, false);
         } else {
-            receive(path, remote);
+            receive(path, remote, false);
         }
         return true;
     }
@@ -319,6 +336,7 @@ public class SyncEngine {
         fireAction(ACTION_CONFLICT, path);
         client.downloadFile(path, target, remote.getLastModified(), progressFor(path));
         fireActionDone(ACTION_CONFLICT, path);
+        summary.countConflict();
     }
 
     private boolean deleteLocal(String path) {
@@ -332,6 +350,7 @@ public class SyncEngine {
             }
             tombstoneStore.add(path);
             fireActionDone(ACTION_DELETE_LOCAL, path);
+            summary.countDeleted();
             return true;
         } catch (Exception e) {
             fireError(path, e);

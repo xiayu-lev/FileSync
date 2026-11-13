@@ -5,6 +5,7 @@ import com.filesync.common.discovery.DiscoveryListener;
 import com.filesync.common.model.DeviceInfo;
 import com.filesync.common.sync.SyncEngine;
 import com.filesync.common.sync.SyncListener;
+import com.filesync.common.sync.SyncSummary;
 import com.filesync.desktop.net.DesktopPeerClient;
 import com.filesync.desktop.net.HttpFileServer;
 import com.filesync.desktop.sync.DirectoryWatcher;
@@ -465,8 +466,8 @@ public class MainApp extends Application {
             }
 
             @Override
-            public void onComplete(int changedCount) {
-                Platform.runLater(() -> log("===== 同步完成，变更 " + changedCount + " 项 ====="));
+            public void onComplete(SyncSummary summary) {
+                Platform.runLater(() -> log(summary.describe()));
             }
 
             @Override
