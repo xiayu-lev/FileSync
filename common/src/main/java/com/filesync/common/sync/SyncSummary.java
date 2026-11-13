@@ -55,18 +55,31 @@ public class SyncSummary {
         return added + updated + deleted + directories + conflicts;
     }
 
-    /** 两端日志统一使用的完成行 */
+    /**
+     * 两端日志统一使用的完成行：第一行标题，第二行只列本轮流真实发生的类别，
+     * 避免手机窄屏日志区折行。
+     */
     public String describe() {
-        StringBuilder sb = new StringBuilder("===== 同步完成：新增 ").append(added)
-                .append(" 项，更新 ").append(updated)
-                .append(" 项，删除 ").append(deleted).append(" 项");
-        if (directories > 0) {
-            sb.append("，新建目录 ").append(directories).append(" 个");
+        StringBuilder body = new StringBuilder();
+        appendCount(body, "新增", added, " 项");
+        appendCount(body, "更新", updated, " 项");
+        appendCount(body, "删除", deleted, " 项");
+        appendCount(body, "新建目录", directories, " 个");
+        appendCount(body, "冲突副本", conflicts, " 个");
+        if (body.length() == 0) {
+            return "===== 同步完成 =====\n没有变化";
         }
-        if (conflicts > 0) {
-            sb.append("，冲突副本 ").append(conflicts).append(" 个");
+        body.append(" · 共 ").append(total()).append(" 项");
+        return "===== 同步完成 =====\n" + body;
+    }
+
+    private static void appendCount(StringBuilder sb, String label, int count, String unit) {
+        if (count <= 0) {
+            return;
         }
-        sb.append("，共 ").append(total()).append(" 项 =====");
-        return sb.toString();
+        if (sb.length() > 0) {
+            sb.append(" · ");
+        }
+        sb.append(label).append(' ').append(count).append(unit);
     }
 }
