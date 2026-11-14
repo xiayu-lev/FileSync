@@ -8,7 +8,9 @@
 
 - **自动设备发现**：UDP 广播，上线即自动列出局域网内的对端设备
 - **双向同步**：任一端新增、修改、删除文件，同步后两端保持一致
-- **手机端自动同步（1.0.10，可开关）**：设备卡下方有「自动同步」开关，默认开启、状态持久化；开启时手机目录变化 3 秒防抖后自动同步，关闭后只保留「立即同步」手动触发。优先同步到选中设备，没有选中且只有一台设备在线时自动用它；同步期间又改的文件会在本轮结束后补一次；同步引擎自身写盘不会触发循环同步
+- **手机端自动同步（1.0.10，可开关）**：设备卡下方有「自动同步」开关，默认开启、状态持久化；开启时手机目录变化 3 秒防抖后自动同步，关闭后只保留「立即同步」手动触发。同步期间又改的文件会在本轮结束后补一次；同步引擎自身写盘不会触发循环同步
+- **自动选择设备（桌面端 1.0.9 / 手机端 1.0.11）**：设备上线后自动选中第一台，无需手动点击；用户手动选择后按设备 ID 保持，设备刷新、上下线不会丢选中，原设备离线时自动切到下一台在线设备
+- **桌面端常驻（1.0.9）**：点窗口关闭按钮不退出程序，而是隐藏到 Windows 系统托盘，后台同步继续；托盘双击恢复，右键可退出。支持开机自启（Windows 登录后自动启动），同步按钮旁有「开机自启」开关
 - **断点续传**：下载中断保留 `.part` 文件，下次自动从断点续传
 - **删除同步（墓碑机制）**：删除操作通过 tombstone 传播，不会把“已删除”误判为“待上传”
 - **冲突处理**：
@@ -181,7 +183,7 @@ gradlew.bat build -x test
 ```powershell
 # 1. 运行时依赖（common + gson + JavaFX win 版 jar）与 app-image
 gradlew.bat :desktop:installDist
-jpackage --type app-image --name FileSync --app-version 1.0.8 `
+jpackage --type app-image --name FileSync --app-version 1.0.9 `
   --input desktop\build\install\desktop\lib `
   --main-jar desktop-1.0.1.jar --main-class com.filesync.desktop.Launcher `
   --icon desktop\packaging\fileSync.ico --dest desktop\build\jpackage
@@ -194,7 +196,7 @@ ISCC.exe desktop\packaging\FileSync.iss
 > 继承 `Application` 的 main class 会强制检查 `javafx.graphics` 模块，classpath 分发
 > 的 JavaFX 会被判为“缺少 JavaFX 运行时组件”。
 
-产物：`desktop\build\inno\FileSync-1.0.8-Setup.exe`（约 42 MB）、
+产物：`desktop\build\inno\FileSync-1.0.9-Setup.exe`（约 42 MB）、
 `desktop\build\jpackage\FileSync\`（免安装目录，展开约 160 MB，压缩约 60 MB）。
 安装包会创建开始菜单与桌面快捷方式，卸载入口在 `E:\Program Files (x86)\FileSync\unins000.exe`。
 
@@ -259,6 +261,7 @@ ISCC.exe desktop\packaging\FileSync.iss
 ## 十、版本
 
 - protocolVersion：1
+- 版本：1.0.11（电脑端 1.0.9：关闭窗口最小化到系统托盘、开机自启开关；两端自动选择第一台在线设备，原选中设备离线后自动切换，手动选择仍保持）
 - 版本：1.0.10（手机端自动同步增加「自动同步」开关：默认开启、状态持久化，关闭后只能手动同步；桌面端保持 1.0.8 不变）
 - 版本：1.0.9（手机端自动同步：目录变化 3 秒防抖后自动同步到选中设备；删除自动传播；同步中修改补一次；桌面端保持 1.0.8 不变）
 - 版本：1.0.8（电脑端与手机端统一图标：青绿渐变圆角方块 + 双向白箭头，桌面端补齐 16~256 多尺寸 ICO，手机端自适应图标改渐变底；桌面安装包默认装到 `E:\Program Files (x86)\FileSync`）

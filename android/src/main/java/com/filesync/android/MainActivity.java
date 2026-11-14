@@ -284,7 +284,7 @@ public class MainActivity extends AppCompatActivity implements SyncManager.State
         }
         DeviceInfo d = findSelectedPeer();
         if (d == null) {
-            tvSelected.setText("当前选中：未选择（点击列表中的设备）");
+            tvSelected.setText("当前选中：等待设备上线（自动选择）");
             return;
         }
         String tag = DeviceInfo.TYPE_ANDROID.equals(d.getDeviceType()) ? "[手机] " : "[电脑] ";
@@ -292,24 +292,37 @@ public class MainActivity extends AppCompatActivity implements SyncManager.State
                 + "\n" + d.getIp() + ":" + d.getHttpPort());
     }
 
-    /** 列表刷新后按设备 ID 恢复选中状态 */
+    /** 列表刷新后按设备 ID 恢复选中；没有选中项时自动选择第一台在线设备 */
     private void restoreSelection() {
         lvPeers.clearChoices();
-        if (selectedDeviceId == null) {
+        String oldId = selectedDeviceId;
+        if (selectedDeviceId != null) {
+            for (int i = 0; i < peers.size(); i++) {
+                if (selectedDeviceId.equals(peers.get(i).getDeviceId())) {
+                    lvPeers.setItemChecked(i, true);
+                    if (manager != null) {
+                        manager.setSelectedDeviceId(selectedDeviceId);
+                    }
+                    updateSelectedLabel();
+                    return;
+                }
+            }
+        }
+        if (!peers.isEmpty()) {
+            DeviceInfo first = peers.get(0);
+            selectedDeviceId = first.getDeviceId();
+            lvPeers.setItemChecked(0, true);
             if (manager != null) {
-                manager.setSelectedDeviceId(null);
+                manager.setSelectedDeviceId(selectedDeviceId);
             }
             updateSelectedLabel();
+            appendLog((oldId == null ? "已自动选择设备: " : "原选中设备已离线，自动切换到: ")
+                    + first.getDeviceName());
             return;
         }
-        for (int i = 0; i < peers.size(); i++) {
-            if (selectedDeviceId.equals(peers.get(i).getDeviceId())) {
-                lvPeers.setItemChecked(i, true);
-                break;
-            }
-        }
+        selectedDeviceId = null;
         if (manager != null) {
-            manager.setSelectedDeviceId(selectedDeviceId);
+            manager.setSelectedDeviceId(null);
         }
         updateSelectedLabel();
     }

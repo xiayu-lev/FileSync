@@ -1,10 +1,10 @@
 ; FileSync 桌面端安装包（Inno Setup 6）
-; 编译：ISCC.exe /DMyAppVersion=1.0.8 FileSync.iss
+; 编译：ISCC.exe /DMyAppVersion=1.0.9 FileSync.iss
 ; 依赖：先用 jpackage --type app-image 生成 desktop\build\jpackage\FileSync
 
 #define MyAppName "FileSync"
 #ifndef MyAppVersion
-  #define MyAppVersion "1.0.8"
+  #define MyAppVersion "1.0.9"
 #endif
 #define MyAppPublisher "FileSync"
 #define MyAppExeName "FileSync.exe"
@@ -43,3 +43,7 @@ Name: "{autodesktop}\FileSync"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "启动 FileSync"; Flags: nowait postinstall skipifsilent
+
+[UninstallRun]
+; 卸载时移除开机自启项，避免留下指向已删除 exe 的注册表项
+Filename: "{sys}\reg.exe"; Parameters: "delete ""HKCU\Software\Microsoft\Windows\CurrentVersion\Run"" /v FileSync /f"; Flags: runhidden; RunOnceId: "RemoveFileSyncAutoStart"

@@ -201,7 +201,7 @@
             android:paddingTop="8dp"
             android:paddingEnd="10dp"
             android:paddingBottom="8dp"
-            android:text="当前选中：未选择（点击列表中的设备）"
+            android:text="当前选中：等待设备上线（自动选择）"
             android:textColor="#0A756C"
             android:textSize="12sp"
             android:textStyle="bold" />

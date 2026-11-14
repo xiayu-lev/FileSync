@@ -29,6 +29,7 @@ import javafx.scene.control.ProgressBar;
 import javafx.scene.control.Separator;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
+import javafx.scene.control.Tooltip;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -36,6 +37,13 @@ import javafx.scene.layout.VBox;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.Stage;
 
+import javax.imageio.ImageIO;
+
+import java.awt.MenuItem;
+import java.awt.PopupMenu;
+import java.awt.SystemTray;
+import java.awt.TrayIcon;
+import java.awt.image.BufferedImage;
 import java.io.File;
 import java.time.LocalTime;
 import java.util.concurrent.ExecutorService;
@@ -65,6 +73,7 @@ public class MainApp extends Application {
     private Button syncBtn;
     private Button cancelBtn;
     private CheckBox autoSyncBox;
+    private CheckBox autoStartBox;
     private ProgressBar progressBar;
     private Label progressLabel;
     private Label statusLabel;
@@ -76,6 +85,11 @@ public class MainApp extends Application {
     private HttpFileServer fileServer;
     private DirectoryWatcher watcher;
     private SyncEngine engine;
+
+    private TrayIcon trayIcon;
+    private boolean trayHintShown;
+    private boolean reallyExit;
+    private boolean shutdownDone;
 
     private volatile File syncRoot;
     private volatile boolean syncRunning;
@@ -113,8 +127,20 @@ public class MainApp extends Application {
         }
         stage.setTitle("FileSync 文件同步 - 桌面端");
         stage.setScene(scene);
-        stage.setOnCloseRequest(e -> shutdown());
+
+        // 关闭窗口不退出程序：隐藏到系统托盘，后台同步继续进行
+        Platform.setImplicitExit(false);
+        setupTray(stage);
+        stage.setOnCloseRequest(e -> {
+            if (reallyExit) {
+                return;
+            }
+            e.consume();
+            minimizeToTray(stage);
+        });
+
         stage.show();
+        applyAutoStart();
 
         bootstrapNetwork();
         restoreLastDirectory();
@@ -226,7 +252,27 @@ public class MainApp extends Application {
 
         autoSyncBox = new CheckBox("自动同步（目录变化时自动执行）");
 
-        HBox buttonRow = new HBox(10, syncBtn, cancelBtn, autoSyncBox);
+        autoStartBox = new CheckBox("开机自启");
+        autoStartBox.setSelected(config.isAutoStart());
+        autoStartBox.setTooltip(new Tooltip("Windows 登录后自动启动 FileSync"));
+        autoStartBox.selectedProperty().addListener((obs, oldV, newV) -> {
+            if (config == null) {
+                return;
+            }
+            config.setAutoStart(newV);
+            try {
+                config.save();
+            } catch (Exception e) {
+                log("保存开机自启设置失败: " + e.getMessage());
+            }
+            if (!AutoStart.setEnabled(newV)) {
+                log(newV ? "开机自启设置失败" : "关闭开机自启失败");
+                return;
+            }
+            log(newV ? "已开启开机自启" : "已关闭开机自启");
+        });
+
+        HBox buttonRow = new HBox(10, syncBtn, cancelBtn, autoSyncBox, autoStartBox);
         buttonRow.setAlignment(Pos.CENTER_LEFT);
 
         progressLabel = new Label("空闲");
@@ -257,6 +303,81 @@ public class MainApp extends Application {
         bar.setPadding(new Insets(8, 16, 8, 16));
         bar.getStyleClass().add("status-bar");
         return bar;
+    }
+
+    /** 创建系统托盘图标：关闭主窗口后仍能从这里恢复或退出 */
+    private void setupTray(Stage stage) {
+        if (!SystemTray.isSupported()) {
+            return;
+        }
+        try {
+            BufferedImage icon = ImageIO.read(getClass().getResource("/app-icon.png"));
+            PopupMenu popup = new PopupMenu();
+            MenuItem showItem = new MenuItem("显示主界面");
+            showItem.addActionListener(e -> Platform.runLater(() -> showStage(stage)));
+            MenuItem exitItem = new MenuItem("退出 FileSync");
+            exitItem.addActionListener(e -> Platform.runLater(this::exitApplication));
+            popup.add(showItem);
+            popup.addSeparator();
+            popup.add(exitItem);
+
+            trayIcon = new TrayIcon(icon, "FileSync 文件同步", popup);
+            trayIcon.setImageAutoSize(true);
+            trayIcon.addActionListener(e -> Platform.runLater(() -> showStage(stage)));
+            SystemTray.getSystemTray().add(trayIcon);
+        } catch (Exception e) {
+            trayIcon = null;
+            log("系统托盘不可用，关闭窗口将最小化到任务栏: " + e.getMessage());
+        }
+    }
+
+    private void minimizeToTray(Stage stage) {
+        if (trayIcon == null) {
+            stage.setIconified(true);
+            return;
+        }
+        stage.hide();
+        if (!trayHintShown) {
+            trayIcon.displayMessage("FileSync 文件同步",
+                    "已最小化到系统托盘，双击图标可恢复；后台同步会继续运行。",
+                    TrayIcon.MessageType.INFO);
+            trayHintShown = true;
+        }
+    }
+
+    private void showStage(Stage stage) {
+        if (!stage.isShowing()) {
+            stage.show();
+        }
+        stage.setIconified(false);
+        stage.toFront();
+    }
+
+    /** 启动时按配置写入或删除开机自启项，安装路径变化时自动覆盖旧路径 */
+    private void applyAutoStart() {
+        if (autoStartBox == null) {
+            return;
+        }
+        boolean available = AutoStart.installedLauncher() != null;
+        autoStartBox.setDisable(!available);
+        if (!available) {
+            autoStartBox.setTooltip(new Tooltip("开发运行模式不注册开机自启；安装版可用"));
+            return;
+        }
+        if (AutoStart.setEnabled(config.isAutoStart())) {
+            log(config.isAutoStart()
+                    ? "已启用开机自启（Windows 登录后自动运行）"
+                    : "开机自启已关闭");
+        } else {
+            log("开机自启设置失败");
+        }
+    }
+
+    private void exitApplication() {
+        reallyExit = true;
+        shutdown();
+        Platform.exit();
+        System.exit(0);
     }
 
     private void bootstrapNetwork() {
@@ -492,21 +613,33 @@ public class MainApp extends Application {
         });
     }
 
-    /** 执行列表变更，并在结束后按设备 ID 还原选中项 */
+    /** 执行列表变更，保持用户选中的设备；没有选中项时自动选第一台在线设备 */
     private void refreshKeepsSelection(Runnable mutation) {
-        DeviceInfo selected = deviceListView == null ? null
-                : deviceListView.getSelectionModel().getSelectedItem();
-        String selectedId = selected == null ? null : selected.getDeviceId();
-        mutation.run();
-        if (selectedId == null || deviceListView == null) {
+        if (deviceListView == null) {
+            mutation.run();
             return;
         }
-        for (DeviceInfo d : peerList) {
-            if (selectedId.equals(d.getDeviceId())) {
-                deviceListView.getSelectionModel().select(d);
-                updateSelectedLabel();
-                return;
+        DeviceInfo selected = deviceListView.getSelectionModel().getSelectedItem();
+        String selectedId = selected == null ? null : selected.getDeviceId();
+        mutation.run();
+        if (selectedId != null) {
+            for (DeviceInfo d : peerList) {
+                if (selectedId.equals(d.getDeviceId())) {
+                    deviceListView.getSelectionModel().select(d);
+                    updateSelectedLabel();
+                    return;
+                }
             }
+        }
+        if (!peerList.isEmpty()) {
+            DeviceInfo first = peerList.get(0);
+            deviceListView.getSelectionModel().select(first);
+            updateSelectedLabel();
+            String tag = DeviceInfo.TYPE_ANDROID.equals(first.getDeviceType())
+                    ? "[手机] " : "[电脑] ";
+            log((selectedId == null ? "已自动选择设备: " : "原选中设备已离线，自动切换到: ")
+                    + tag + first.getDeviceName());
+            return;
         }
         updateSelectedLabel();
     }
@@ -560,7 +693,15 @@ public class MainApp extends Application {
     }
 
     private void shutdown() {
+        if (shutdownDone) {
+            return;
+        }
+        shutdownDone = true;
         try {
+            if (trayIcon != null) {
+                SystemTray.getSystemTray().remove(trayIcon);
+                trayIcon = null;
+            }
             if (watcher != null) {
                 watcher.stop();
             }

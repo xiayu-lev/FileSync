@@ -24,6 +24,7 @@ public class AppConfig {
     private String deviceId;
     private String deviceName;
     private String lastSyncDir;
+    private boolean autoStart = true;
 
     public AppConfig() {
         this.configDir = Paths.get(System.getProperty("user.home"), CONFIG_DIR_NAME);
@@ -43,6 +44,7 @@ public class AppConfig {
         }
         deviceName = props.getProperty("deviceName", defaultDeviceName());
         lastSyncDir = props.getProperty("lastSyncDir", "");
+        autoStart = Boolean.parseBoolean(props.getProperty("autoStart", "true"));
     }
 
     public void save() throws IOException {
@@ -52,6 +54,7 @@ public class AppConfig {
         props.setProperty("deviceId", deviceId);
         props.setProperty("deviceName", deviceName);
         props.setProperty("lastSyncDir", lastSyncDir == null ? "" : lastSyncDir);
+        props.setProperty("autoStart", Boolean.toString(autoStart));
         try (OutputStream out = Files.newOutputStream(configDir.resolve(CONFIG_FILE_NAME))) {
             props.store(out, "FileSync desktop config");
         }
@@ -75,6 +78,14 @@ public class AppConfig {
 
     public void setLastSyncDir(String lastSyncDir) {
         this.lastSyncDir = lastSyncDir;
+    }
+
+    public boolean isAutoStart() {
+        return autoStart;
+    }
+
+    public void setAutoStart(boolean autoStart) {
+        this.autoStart = autoStart;
     }
 
     private static String defaultDeviceName() {
