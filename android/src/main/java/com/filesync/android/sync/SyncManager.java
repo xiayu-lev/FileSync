@@ -37,6 +37,10 @@ public class SyncManager {
     private static final String PREFS_NAME = "filesync_prefs";
     private static final String KEY_DEVICE_ID = "device_id";
     private static final String KEY_SYNC_DIR = "sync_dir";
+    /** 手机目录变化后等待多久再自动同步，避开拍照/批量写入的连续事件 */
+    private static final long AUTO_SYNC_DEBOUNCE_MS = 3000L;
+    /** 一次同步刚结束时留一点间隔，防止自身写盘尾事件再次触发 */
+    private static final long AUTO_SYNC_AFTER_SYNC_GAP_MS = 1500L;
 
     private static volatile SyncManager instance;
 
@@ -58,6 +62,14 @@ public class SyncManager {
     private volatile boolean started;
     private volatile boolean syncRunning;
     private volatile int lastNotifiedPercent = -1;
+
+    /** 当前选中的设备 ID，自动同步优先同步到这台 */
+    private volatile String selectedDeviceId;
+    /** 自动同步防抖任务 */
+    private Runnable pendingAutoSync;
+    /** 同步过程中用户又改了文件，等本轮结束后补一次 */
+    private volatile boolean pendingChangeWhileSyncing;
+    private volatile long lastSyncFinishedAt;
 
     private SyncManager(Context context) {
         this.appContext = context.getApplicationContext();
@@ -173,7 +185,8 @@ public class SyncManager {
         fileObserver.setListener(new FileEventListener() {
             @Override
             public void onChanged(String relPath) {
-                // 第一版由手动按钮触发，自动同步可在此扩展
+                // 用户新增/修改文件：防抖后自动同步到选中的电脑
+                scheduleAutoSync();
             }
 
             @Override
@@ -183,6 +196,8 @@ public class SyncManager {
                 } catch (Exception e) {
                     postLog("墓碑记录失败: " + e.getMessage());
                 }
+                // 删除也要自动传播（墓碑已先记好）
+                scheduleAutoSync();
             }
         });
     }
@@ -222,6 +237,11 @@ public class SyncManager {
         if (multicastLock != null && multicastLock.isHeld()) {
             multicastLock.release();
         }
+        if (pendingAutoSync != null) {
+            mainHandler.removeCallbacks(pendingAutoSync);
+            pendingAutoSync = null;
+        }
+        pendingChangeWhileSyncing = false;
         stopForegroundService();
     }
 
@@ -231,6 +251,11 @@ public class SyncManager {
             return;
         }
         syncRunning = true;
+        pendingChangeWhileSyncing = false;
+        if (pendingAutoSync != null) {
+            mainHandler.removeCallbacks(pendingAutoSync);
+            pendingAutoSync = null;
+        }
         lastNotifiedPercent = -1;
         notifySyncState(true);
         SyncForegroundService.updateProgress(appContext,
@@ -245,10 +270,16 @@ public class SyncManager {
             } finally {
                 client.close();
                 syncRunning = false;
+                lastSyncFinishedAt = System.currentTimeMillis();
                 lastNotifiedPercent = -1;
                 SyncForegroundService.updateState(appContext,
                         "运行中 · 与 " + peer.getDeviceName() + " 同步完成");
                 mainHandler.post(() -> notifySyncState(false));
+                // 同步期间用户又改了文件：本轮结束后补一次自动同步
+                if (pendingChangeWhileSyncing) {
+                    pendingChangeWhileSyncing = false;
+                    scheduleAutoSync();
+                }
             }
         });
     }
@@ -332,6 +363,74 @@ public class SyncManager {
 
     public List<DeviceInfo> getPeers() {
         return discovery == null ? java.util.Collections.emptyList() : discovery.getDevices();
+    }
+
+    /**
+     * 记住界面上当前选中的设备，自动同步优先用它。
+     * 传 null 表示没有选择（此时只有一台在线设备才会自动同步）。
+     */
+    public void setSelectedDeviceId(String deviceId) {
+        this.selectedDeviceId = deviceId;
+    }
+
+    /**
+     * 手机目录发生变化后的自动同步：3 秒防抖，避开连拍/批量复制产生的密集事件。
+     * 同步进行中发生的用户修改会记下来，本轮结束后补一次。
+     */
+    private void scheduleAutoSync() {
+        if (!started) {
+            return;
+        }
+        if (syncRunning) {
+            pendingChangeWhileSyncing = true;
+            return;
+        }
+        if (pendingAutoSync != null) {
+            mainHandler.removeCallbacks(pendingAutoSync);
+        }
+        pendingAutoSync = new Runnable() {
+            @Override
+            public void run() {
+                long gap = System.currentTimeMillis() - lastSyncFinishedAt;
+                if (lastSyncFinishedAt > 0 && gap < AUTO_SYNC_AFTER_SYNC_GAP_MS) {
+                    // 上一轮同步刚结束，稍等再触发，避免自身写盘的尾事件反复同步
+                    mainHandler.postDelayed(this, AUTO_SYNC_AFTER_SYNC_GAP_MS - gap);
+                    return;
+                }
+                pendingAutoSync = null;
+                tryAutoSync();
+            }
+        };
+        mainHandler.postDelayed(pendingAutoSync, AUTO_SYNC_DEBOUNCE_MS);
+    }
+
+    private void tryAutoSync() {
+        if (!started || syncRunning) {
+            return;
+        }
+        DeviceInfo peer = resolveAutoSyncTarget();
+        if (peer == null) {
+            return;
+        }
+        postLog("检测到目录变化，自动同步到 " + peer.getDeviceName());
+        syncWith(peer);
+    }
+
+    /** 优先用选中的设备；没有选中时，只有唯一一台在线设备才自动同步，避免误同步 */
+    private DeviceInfo resolveAutoSyncTarget() {
+        List<DeviceInfo> peers = getPeers();
+        if (selectedDeviceId != null) {
+            for (DeviceInfo d : peers) {
+                if (selectedDeviceId.equals(d.getDeviceId())) {
+                    return d;
+                }
+            }
+            return null;
+        }
+        if (peers.size() == 1) {
+            return peers.get(0);
+        }
+        return null;
     }
 
     /** 手动刷新设备列表：立即再广播一次发现报文，让在线电脑马上回应 */

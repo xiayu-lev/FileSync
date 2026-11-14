@@ -113,6 +113,9 @@ public class MainActivity extends AppCompatActivity implements SyncManager.State
         lvPeers.setOnItemClickListener((parent, view, position, id) -> {
             if (position >= 0 && position < peers.size()) {
                 selectedDeviceId = peers.get(position).getDeviceId();
+                if (manager != null) {
+                    manager.setSelectedDeviceId(selectedDeviceId);
+                }
                 updateSelectedLabel();
             }
         });
@@ -253,6 +256,9 @@ public class MainActivity extends AppCompatActivity implements SyncManager.State
     private void restoreSelection() {
         lvPeers.clearChoices();
         if (selectedDeviceId == null) {
+            if (manager != null) {
+                manager.setSelectedDeviceId(null);
+            }
             updateSelectedLabel();
             return;
         }
@@ -261,6 +267,9 @@ public class MainActivity extends AppCompatActivity implements SyncManager.State
                 lvPeers.setItemChecked(i, true);
                 break;
             }
+        }
+        if (manager != null) {
+            manager.setSelectedDeviceId(selectedDeviceId);
         }
         updateSelectedLabel();
     }
