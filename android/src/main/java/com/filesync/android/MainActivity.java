@@ -34,6 +34,7 @@ import androidx.core.view.WindowInsetsControllerCompat;
 
 import com.filesync.android.sync.SyncManager;
 import com.filesync.common.model.DeviceInfo;
+import com.google.android.material.switchmaterial.SwitchMaterial;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -56,16 +57,21 @@ public class MainActivity extends AppCompatActivity implements SyncManager.State
     private TextView tvStatus;
     private TextView tvPeerCount;
     private TextView tvPeersEmpty;
+    private TextView tvAutoSyncHint;
     private ListView lvPeers;
     private Button btnSync;
     private Button btnDir;
     private Button btnRefresh;
+    private SwitchMaterial switchAutoSync;
     private ProgressBar progressBar;
     private ScrollView logScroll;
 
     private SyncManager manager;
     private PeerAdapter peerAdapter;
     private final List<DeviceInfo> peers = new ArrayList<>();
+
+    /** 自动同步开关是否已经和 SyncManager 同步过，避免恢复开关状态时触发保存 */
+    private boolean autoSyncUiReady;
 
     /** 记住用户选中的设备 ID：列表刷新（设备上下线）后仍保持同一台被选中 */
     private String selectedDeviceId;
@@ -86,10 +92,12 @@ public class MainActivity extends AppCompatActivity implements SyncManager.State
         tvStatus = findViewById(R.id.tv_status);
         tvPeerCount = findViewById(R.id.tv_peer_count);
         tvPeersEmpty = findViewById(R.id.tv_peers_empty);
+        tvAutoSyncHint = findViewById(R.id.tv_auto_sync_hint);
         lvPeers = findViewById(R.id.lv_peers);
         btnSync = findViewById(R.id.btn_sync);
         btnDir = findViewById(R.id.btn_dir);
         btnRefresh = findViewById(R.id.btn_refresh);
+        switchAutoSync = findViewById(R.id.switch_auto_sync);
         progressBar = findViewById(R.id.progress);
         logScroll = findViewById(R.id.log_scroll);
 
@@ -109,6 +117,14 @@ public class MainActivity extends AppCompatActivity implements SyncManager.State
             if (manager != null) {
                 manager.refreshPeers();
             }
+        });
+        switchAutoSync.setEnabled(false);
+        switchAutoSync.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (!autoSyncUiReady || manager == null) {
+                return;
+            }
+            manager.setAutoSyncEnabled(isChecked);
+            updateAutoSyncHint(isChecked);
         });
         lvPeers.setOnItemClickListener((parent, view, position, id) -> {
             if (position >= 0 && position < peers.size()) {
@@ -172,6 +188,28 @@ public class MainActivity extends AppCompatActivity implements SyncManager.State
         }
     }
 
+    /** 把持久化的自动同步状态恢复到界面；恢复过程中不写回配置 */
+    private void applyAutoSyncUi() {
+        if (manager == null || switchAutoSync == null) {
+            return;
+        }
+        autoSyncUiReady = false;
+        boolean enabled = manager.isAutoSyncEnabled();
+        switchAutoSync.setChecked(enabled);
+        updateAutoSyncHint(enabled);
+        switchAutoSync.setEnabled(true);
+        autoSyncUiReady = true;
+    }
+
+    private void updateAutoSyncHint(boolean enabled) {
+        if (tvAutoSyncHint == null) {
+            return;
+        }
+        tvAutoSyncHint.setText(enabled
+                ? "已开启 · 手机文件变化后自动同步"
+                : "已关闭 · 仅点「立即同步」手动触发");
+    }
+
     private void bootstrap() {
         new Thread(() -> {
             try {
@@ -187,6 +225,7 @@ public class MainActivity extends AppCompatActivity implements SyncManager.State
                         peerAdapter.notifyDataSetChanged();
                         updatePeerCount();
                         restoreSelection();
+                        applyAutoSyncUi();
                     });
                     return;
                 }
@@ -195,6 +234,7 @@ public class MainActivity extends AppCompatActivity implements SyncManager.State
                 runOnUiThread(() -> {
                     updateDirLabel();
                     appendLog("服务初始化完成");
+                    applyAutoSyncUi();
                 });
             } catch (Exception e) {
                 android.util.Log.e("FileSync", "初始化失败", e);

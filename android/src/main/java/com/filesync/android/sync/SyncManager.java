@@ -37,6 +37,7 @@ public class SyncManager {
     private static final String PREFS_NAME = "filesync_prefs";
     private static final String KEY_DEVICE_ID = "device_id";
     private static final String KEY_SYNC_DIR = "sync_dir";
+    private static final String KEY_AUTO_SYNC = "auto_sync_enabled";
     /** 手机目录变化后等待多久再自动同步，避开拍照/批量写入的连续事件 */
     private static final long AUTO_SYNC_DEBOUNCE_MS = 3000L;
     /** 一次同步刚结束时留一点间隔，防止自身写盘尾事件再次触发 */
@@ -62,6 +63,8 @@ public class SyncManager {
     private volatile boolean started;
     private volatile boolean syncRunning;
     private volatile int lastNotifiedPercent = -1;
+    /** 自动同步开关，默认开启，保存在 SharedPreferences */
+    private volatile boolean autoSyncEnabled = true;
 
     /** 当前选中的设备 ID，自动同步优先同步到这台 */
     private volatile String selectedDeviceId;
@@ -88,6 +91,7 @@ public class SyncManager {
 
     public synchronized void init() throws Exception {
         syncRoot = resolveSyncRoot();
+        autoSyncEnabled = prefs().getBoolean(KEY_AUTO_SYNC, true);
 
         String deviceId = prefs().getString(KEY_DEVICE_ID, null);
         if (deviceId == null) {
@@ -373,12 +377,30 @@ public class SyncManager {
         this.selectedDeviceId = deviceId;
     }
 
+    /** 自动同步开关：关闭后目录变化不再自动触发，手动「立即同步」不受影响 */
+    public void setAutoSyncEnabled(boolean enabled) {
+        autoSyncEnabled = enabled;
+        prefs().edit().putBoolean(KEY_AUTO_SYNC, enabled).apply();
+        if (!enabled) {
+            if (pendingAutoSync != null) {
+                mainHandler.removeCallbacks(pendingAutoSync);
+                pendingAutoSync = null;
+            }
+            pendingChangeWhileSyncing = false;
+        }
+        postLog(enabled ? "自动同步已开启" : "自动同步已关闭（仅手动同步）");
+    }
+
+    public boolean isAutoSyncEnabled() {
+        return autoSyncEnabled;
+    }
+
     /**
      * 手机目录发生变化后的自动同步：3 秒防抖，避开连拍/批量复制产生的密集事件。
      * 同步进行中发生的用户修改会记下来，本轮结束后补一次。
      */
     private void scheduleAutoSync() {
-        if (!started) {
+        if (!started || !autoSyncEnabled) {
             return;
         }
         if (syncRunning) {
